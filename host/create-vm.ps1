@@ -307,15 +307,39 @@ if ($vmTypeChoice -eq "2") {
     }
 }
 
-Write-Host "1) DMZ (192.168.10.0/24)"
-Write-Host "2) LAN (192.168.20.0/24)"
-$netChoice = Read-Choice "Réseau de la VM" @("1", "2")
-$intNetName = if ($netChoice -eq "1") { "DMZ" } else { "LAN" }
+$fwRole = $null
+if ($vmTypeChoice -eq "3") {
+    Write-Host "1) Pare-feu Externe"
+    Write-Host "2) Pare-feu Interne"
+    $fwChoice = Read-Choice "Type de pare-feu" @("1", "2")
+    $fwRole = switch ($fwChoice) {
+        "1" { "external" }
+        "2" { "internal" }
+    }
+}
+
+
+# Gestion automatique du réseau pour les firewalls
+if ($vmTypeChoice -eq "3") {
+    if ($fwRole -eq "external") {
+        $intNetName = "DMZ"
+        $ovaFile = Join-Path $projectRoot "ova/firewall-externe.ova"
+    } elseif ($fwRole -eq "internal") {
+        $intNetName = "DMZ"
+        $ovaFile = Join-Path $projectRoot "ova/firewall-interne.ova"
+    }
+} else {
+    Write-Host "1) DMZ (192.168.10.0/24)"
+    Write-Host "2) LAN (192.168.20.0/24)"
+    $netChoice = Read-Choice "Réseau de la VM" @("1", "2")
+    $intNetName = if ($netChoice -eq "1") { "DMZ" } else { "LAN" }
+}
+
 
 $defaultName = switch ($vmTypeChoice) {
     "1" { "client" }
     "2" { "srv-$serverRole" }
-    "3" { "firewall" }
+    "3" { "firewall-$fwRole" }
 }
 
 $name = Read-Host "Nom de la VM (Entrée = $defaultName)"
@@ -346,14 +370,12 @@ $diskSizeMb = switch ($vmTypeChoice) {
 $useUnattended = if ($vmTypeChoice -eq "3") { $false } else { $true }
 
 if ($vmTypeChoice -eq "3") {
-    if (-not $OvaPath) {
-        if (Test-Path $defaultOva) {
-            $OvaPath = $defaultOva
-        } else {
-            $OvaPath = Read-Host "Chemin vers le fichier OVA du pare-feu"
-        }
+    # Sélection automatique du fichier OVA selon le type de pare-feu
+    if ($fwRole -eq "external") {
+        $OvaPath = $ovaFile
+    } elseif ($fwRole -eq "internal") {
+        $OvaPath = $ovaFile
     }
-
     if (-not (Test-Path $OvaPath)) {
         Write-Error "OVA introuvable: $OvaPath"
         exit 1
@@ -361,8 +383,15 @@ if ($vmTypeChoice -eq "3") {
 
     & $VBoxManage import $OvaPath --vsys 0 --vmname $name
     & $VBoxManage modifyvm $name --memory $memory --cpus $cpus
-    & $VBoxManage modifyvm $name --nic1 nat --nictype1 82540EM --cableconnected1 on
-    & $VBoxManage modifyvm $name --nic2 intnet --intnet2 $intNetName --nictype2 82540EM --cableconnected2 off
+    if ($fwRole -eq "external") {
+        # Interface 1 : NAT, Interface 2 : DMZ
+        & $VBoxManage modifyvm $name --nic1 nat --nictype1 82540EM --cableconnected1 on
+        & $VBoxManage modifyvm $name --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
+    } elseif ($fwRole -eq "internal") {
+        # Interface 1 : LAN, Interface 2 : DMZ
+        & $VBoxManage modifyvm $name --nic1 intnet --intnet1 LAN --nictype1 82540EM --cableconnected1 on
+        & $VBoxManage modifyvm $name --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
+    }
 } else {
     if (-not $IsoPath) {
         if (Test-Path $defaultIso) {
