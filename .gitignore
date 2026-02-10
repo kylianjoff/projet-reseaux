@@ -37,3 +37,6 @@ vdi/
 # Fichier ISO et OVA
 *.iso
 *.ova
+
+# cloud-init
+cloud-init/
