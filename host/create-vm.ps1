@@ -431,7 +431,8 @@ if ($vmTypeChoice -eq "3") {
             foreach ($scriptFile in $scriptFiles) {
                 $scriptPath = Join-Path $guestScriptsPath $scriptFile
                 if (Test-Path $scriptPath) {
-                    $content = Get-Content -Path $scriptPath -Raw
+                    # Conversion CRLF -> LF pour compatibilité Linux
+                    $content = (Get-Content -Path $scriptPath -Raw) -replace "`r`n", "`n"
                     if ($null -eq $content) {
                         $content = ""
                     }
