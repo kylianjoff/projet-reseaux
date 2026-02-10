@@ -30,11 +30,12 @@ if ! command -v postconf &> /dev/null; then
 fi
 
 echo "[3/7] Configuration Postfix"
+# Forcer écoute sur toutes les interfaces
+postconf -e "inet_interfaces = all"
+postconf -e "inet_protocols = ipv4"
 postconf -e "myhostname = mail.projet.local"
 postconf -e "mydomain = projet.local"
 postconf -e "myorigin = /etc/mailname"
-postconf -e "inet_interfaces = all"
-postconf -e "inet_protocols = ipv4"
 postconf -e "mydestination = \$myhostname, localhost.\$mydomain, localhost, \$mydomain"
 postconf -e "home_mailbox = Maildir/"
 postconf -e "mynetworks = 127.0.0.0/8 192.168.10.0/24 192.168.20.0/24"
@@ -69,4 +70,7 @@ echo " SMTP : port 25"
 echo " IMAP : port 143"
 echo " Accessible depuis le LAN/DMZ"
 echo "========================================="
+
 echo "Done my MED"
+echo "========================================="
+
