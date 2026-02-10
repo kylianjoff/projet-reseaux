@@ -37,14 +37,34 @@ else
     echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
 fi
 
-DEFAULT_IFACE="enp0s3"
-
 echo
+echo "Dans quel réseau se trouve le serveur ?"
+echo "1) DMZ (192.168.10.0/24)"
+echo "2) LAN (192.168.20.0/24)"
+read -r -p "Choix [1-2] (Défaut: 2): " NETWORK_CHOICE
+NETWORK_CHOICE="${NETWORK_CHOICE:-2}"
+
+if [ "$NETWORK_CHOICE" = "1" ]; then
+    NETWORK_PREFIX="192.168.10."
+    DEFAULT_GATEWAY="192.168.10.254"
+else
+    NETWORK_PREFIX="192.168.20."
+    DEFAULT_GATEWAY="192.168.20.254"
+fi
+
+DEFAULT_IFACE="enp0s3"
+DEFAULT_LAST_OCTET="10"
+DEFAULT_NETMASK="255.255.255.0"
+
 read -r -p "Nom de l'interface réseau (Par défaut : ${DEFAULT_IFACE}): " IFACE
 IFACE="${IFACE:-$DEFAULT_IFACE}"
-read -r -p "Adresse IP du serveur Web (ex: 192.168.20.10): " SERVER_IP
-read -r -p "Masque réseau (ex: 255.255.255.0): " NETMASK
-read -r -p "Passerelle (ex: 192.168.20.254): " GATEWAY
+read -r -p "Dernier octet de l'adresse IP du serveur Web (Par défaut : ${DEFAULT_LAST_OCTET}): " LAST_OCTET
+LAST_OCTET="${LAST_OCTET:-$DEFAULT_LAST_OCTET}"
+SERVER_IP="${NETWORK_PREFIX}${LAST_OCTET}"
+read -r -p "Masque réseau (Par défaut : ${DEFAULT_NETMASK}): " NETMASK
+NETMASK="${NETMASK:-$DEFAULT_NETMASK}"
+read -r -p "Passerelle (Par défaut : ${DEFAULT_GATEWAY}): " GATEWAY
+GATEWAY="${GATEWAY:-$DEFAULT_GATEWAY}"
 read -r -p "Serveurs DNS (séparés par des virgules, ex: 1.1.1.1,8.8.8.8): " DNS
 read -r -p "Nom de domaine (optionnel, ex: web.lan.local): " SERVER_NAME
 
@@ -68,17 +88,15 @@ iface ${IFACE} inet static
 EOF
 
 echo "== Configuration Apache =="
-if [ -n "$SERVER_NAME" ]; then
-    cat > /etc/apache2/sites-available/000-default.conf <<EOF
+cat > /etc/apache2/sites-available/000-default.conf <<EOF
 <VirtualHost *:80>
-    ServerName ${SERVER_NAME}
+$( [ -n "$SERVER_NAME" ] && echo "    ServerName ${SERVER_NAME}" )
     ServerAdmin webmaster@localhost
     DocumentRoot /var/www/html
-    ErrorLog \/var\/log\/apache2\/error.log
-    CustomLog \/var\/log\/apache2\/access.log combined
+    ErrorLog /var/log/apache2/error.log
+    CustomLog /var/log/apache2/access.log combined
 </VirtualHost>
 EOF
-fi
 
 cat > /var/www/html/index.html <<EOF
 <!doctype html>
@@ -104,3 +122,9 @@ echo "== Terminé =="
 echo "Accès: http://${SERVER_IP}/"
 echo "Redémarrez le serveur pour appliquer tous les configurations: reboot"
 echo ""
+read -r -p "Voulez-vous redémarrer le serveur maintenant ? [O/N] : " REBOOT_CHOICE
+REBOOT_CHOICE="${REBOOT_CHOICE:-N}"
+
+if [ "$REBOOT_CHOICE" = "O" ]; then
+    reboot now
+fi
