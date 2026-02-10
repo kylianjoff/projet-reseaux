@@ -9,7 +9,7 @@ Ce dépôt permet de **créer et installer automatiquement** des VM (clients, se
 ## Prérequis
 - Windows + PowerShell
 - VirtualBox installé
-- Télécharger le dossier ZIP contenant les fichiers `.iso` et `.ova` depuis le cloud (lien à venir)
+- Télécharger le dossier ZIP contenant les fichiers `.iso` et `.ova` depuis le cloud [Lien vers les ressources](https://1drv.ms/u/c/71c7ddacee86e000/IQARzNaDJXJpTrXFSLH68Q5FAU2gsKkdJphCyzl9-6SwLwY?e=5SCjUi)
    - Décompresser le contenu dans le dossier du projet (les fichiers doivent se retrouver dans `iso/` et `ova/`)
 
 ---
@@ -63,7 +63,7 @@ Emplacements créés :
 
 
 ## Procédure d’utilisation
-1. Télécharger et décompresser le dossier ZIP contenant les fichiers `.iso` et `.ova` (lien à venir)
+1. Télécharger et décompresser le dossier ZIP contenant les fichiers `.iso` et `.ova` [Lien vers les ressources](https://1drv.ms/u/c/71c7ddacee86e000/IQARzNaDJXJpTrXFSLH68Q5FAU2gsKkdJphCyzl9-6SwLwY?e=5SCjUi)
 2. Lancer PowerShell dans le dossier du projet
 3. Exécuter le script :
    - `./host/create-vm.ps1`
