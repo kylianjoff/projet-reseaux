@@ -5,14 +5,18 @@ Ce dépôt permet de **créer et installer automatiquement** des VM (clients, se
 
 ---
 
+
 ## Prérequis
 - Windows + PowerShell
 - VirtualBox installé
+- Télécharger le dossier ZIP contenant les fichiers `.iso` et `.ova` depuis le cloud (lien à venir)
+   - Décompresser le contenu dans le dossier du projet (les fichiers doivent se retrouver dans `iso/` et `ova/`)
 
 ---
 
+
 ## Script principal
-Le script se trouve dans :
+Le script principal est :
 
 - [host/create-vm.ps1](host/create-vm.ps1)
 
@@ -26,15 +30,21 @@ Ces valeurs peuvent être modifiées via les paramètres du script.
 
 ---
 
+
 ## Réseaux
 Chaque VM est configurée avec **2 cartes réseau** :
 
-1. **NAT** (accès Internet pendant l’installation)
-2. **Intnet** (réseau interne)
-   - DMZ → 192.168.10.0/24
-   - LAN → 192.168.20.0/24
+- **Client/Serveur** :
+   1. **NAT** (accès Internet pendant l’installation)
+   2. **Intnet** (DMZ ou LAN, au choix)
+- **Pare-feu externe** :
+   1. **NAT**
+   2. **DMZ**
+- **Pare-feu interne** :
+   1. **LAN**
+   2. **DMZ**
 
-**Important :** la carte interne (Intnet) est **désactivée pendant l’installation** afin d’éviter les erreurs de dépôt, puis **réactivée après le démarrage**.
+**Important :** la carte interne (Intnet) est **désactivée pendant l’installation** pour les clients/serveurs afin d’éviter les erreurs de dépôt, puis **réactivée après le démarrage**.
 
 ---
 
@@ -51,31 +61,40 @@ Emplacements créés :
 
 ---
 
-## Procédure d’utilisation
-1. Lancer PowerShell dans le dossier du projet
-2. Exécuter le script
 
-Le script pose quelques questions (type de VM, rôle, réseau, nom), puis l’installation se fait **sans interaction** dans l’installateur Debian.
+## Procédure d’utilisation
+1. Télécharger et décompresser le dossier ZIP contenant les fichiers `.iso` et `.ova` (lien à venir)
+2. Lancer PowerShell dans le dossier du projet
+3. Exécuter le script :
+   - `./host/create-vm.ps1`
+
+Le script pose quelques questions (type de VM, rôle, réseau, nom). Pour les pare-feu, le choix du réseau est automatique :
+   - **Pare-feu externe** : interface 1 = NAT, interface 2 = DMZ (utilise `ova/firewall-externe.ova`)
+   - **Pare-feu interne** : interface 1 = LAN, interface 2 = DMZ (utilise `ova/firewall-interne.ova`)
+
+L’installation se fait **sans interaction** dans l’installateur Debian pour les clients et serveurs.
 
 ---
 
-## Paramètres utiles
-Le script accepte des paramètres pour éviter de saisir des chemins :
 
-- `-IsoPath` → chemin de l’ISO Debian
-- `-OvaPath` → chemin de l’OVA pare‑feu
+## Paramètres utiles
+Le script accepte des paramètres pour éviter de saisir des chemins :
+
+- `-IsoPath` → chemin de l’ISO Debian (par défaut `iso/debian-13.iso`)
+- `-OvaPath` → chemin de l’OVA pare‑feu (pour usage avancé, sinon automatique)
 - `-AdminUser` → utilisateur admin (par défaut `administrateur`)
 - `-AdminPassword` → mot de passe admin (par défaut `admin`)
 - `-RootPassword` → mot de passe root (par défaut `root`)
 
 ---
 
+
 ## Résultat attendu
 - VM créée et démarrée automatiquement
 - Debian installée sans intervention
 - Clavier en français (AZERTY)
 - Scripts présents dans `/home/administrateur/` et `/opt/projet-reseaux/guest`
-- Réseau configuré en NAT + DMZ/LAN
+- Réseau configuré selon le type de VM (voir plus haut)
 - **Clients** avec bureau GNOME
 
 ---
