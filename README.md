@@ -15,7 +15,7 @@ Ce dépôt permet de **créer et installer automatiquement** des VM (clients, se
 ---
 
 
-## Script principal
+## Script principal (Windows)
 Le script principal est :
 
 - [host/create-vm.ps1](host/create-vm.ps1)
@@ -27,6 +27,34 @@ Il **crée la VM**, **attache le disque**, **configure le réseau**, **démarre 
 - Root : mot de passe `root`
 
 Ces valeurs peuvent être modifiées via les paramètres du script.
+
+---
+
+
+## Version Linux (Bash)
+
+Pour les utilisateurs Linux, un script Bash équivalent est fourni :
+
+- [host/create-vm.sh](host/create-vm.sh)
+
+**Prérequis :**
+- Linux
+- VirtualBox installé (VBoxManage dans le PATH)
+- Les fichiers ISO/OVA dans les dossiers `iso/` et `ova/`
+
+**Utilisation :**
+1. Ouvrir un terminal dans le dossier du projet
+2. Rendre le script exécutable si besoin :
+   ```bash
+   chmod +x host/create-vm.sh
+   ```
+3. Lancer le script :
+   ```bash
+   ./host/create-vm.sh
+   ```
+4. Répondre aux questions interactives (type de VM, rôle, réseau, nom, etc.)
+
+Le script gère la création de VM, l’attachement des disques, la configuration réseau, et le démarrage automatique, comme la version PowerShell.
 
 ---
 
