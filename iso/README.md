@@ -1,0 +1,1 @@
+Prenez debian 13 sur le site officiel de debian renommez le debian-13.iso et mettez le dans ce dossier.

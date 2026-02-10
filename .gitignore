@@ -1,0 +1,35 @@
+# Dépendances
+node_modules/
+vendor/
+
+# Fichiers générés
+dist/
+build/
+out/
+target/
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# IDE / éditeurs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environnements
+.env
+.env.* 
+
+# Archives
+*.zip
+*.tar
+*.gz
+
+# VDI
+vdi/
