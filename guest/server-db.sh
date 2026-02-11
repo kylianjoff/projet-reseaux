@@ -39,7 +39,6 @@ fi
 
 echo
 echo "== Configuration Réseau (DHCP - LAN) =="
-# Pour le LAN, on reste en DHCP comme prévu dans ton plan
 if [ -f /etc/network/interfaces ]; then
     cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
@@ -56,10 +55,16 @@ auto ${IFACE}
 iface ${IFACE} inet dhcp
 EOF
 
-echo "== Configuration MariaDB =="
-# On autorise l'écoute sur toutes les interfaces pour que le serveur Web (en DMZ) 
-# puisse interroger la BDD (nécessite une règle sur le FW Interne)
-sed -i 's/127.0.0.1/0.0.0.0/' /etc/mysql/mariadb.conf.d/50-server.cnf
+echo "== Correction du Bind-Address (Ecoute sur 0.0.0.0) =="
+# Cette ligne cherche le bind-address 127.0.0.1 et le remplace par 0.0.0.0
+# pour permettre les connexions depuis le serveur Web en DMZ.
+CONF_FILE="/etc/mysql/mariadb.conf.d/50-server.cnf"
+if [ -f "$CONF_FILE" ]; then
+    sed -i 's/^bind-address\s*=\s*127.0.0.1/bind-address            = 0.0.0.0/' "$CONF_FILE"
+    echo "Configuration mise à jour dans $CONF_FILE"
+else
+    echo "Fichier de config MariaDB introuvable, vérifiez l'installation." >&2
+fi
 
 echo "== Redémarrage des services =="
 systemctl restart networking
@@ -67,8 +72,8 @@ systemctl enable mariadb
 systemctl restart mariadb
 
 echo "== Terminé =="
-echo "Le serveur BDD est prêt et configuré en DHCP."
-echo "Vérifiez l'IP reçue avec : ip addr show ${IFACE}"
+echo "Le serveur BDD est prêt."
+echo "NOTE : Le DHCP n'étant pas configuré, le serveur attend une IP."
 echo ""
 read -r -p "Voulez-vous redémarrer le serveur maintenant ? [O/N] : " REBOOT_CHOICE
 REBOOT_CHOICE="${REBOOT_CHOICE:-N}"
