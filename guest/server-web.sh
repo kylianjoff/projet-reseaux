@@ -41,15 +41,17 @@ echo
 echo "Dans quel réseau se trouve le serveur ?"
 echo "1) DMZ (192.168.10.0/24)"
 echo "2) LAN (192.168.20.0/24)"
-read -r -p "Choix [1-2] (Défaut: 2): " NETWORK_CHOICE
-NETWORK_CHOICE="${NETWORK_CHOICE:-2}"
+read -r -p "Choix [1-2] (Défaut: 1): " NETWORK_CHOICE
+NETWORK_CHOICE="${NETWORK_CHOICE:-1}"
 
 if [ "$NETWORK_CHOICE" = "1" ]; then
     NETWORK_PREFIX="192.168.10."
     DEFAULT_GATEWAY="192.168.10.254"
+    DEFAULT_DNS="192.168.10.13"
 else
     NETWORK_PREFIX="192.168.20."
     DEFAULT_GATEWAY="192.168.20.254"
+    DEFAULT_DNS="192.168.20.10"
 fi
 
 DEFAULT_IFACE="enp0s3"
@@ -65,7 +67,8 @@ read -r -p "Masque réseau (Par défaut : ${DEFAULT_NETMASK}): " NETMASK
 NETMASK="${NETMASK:-$DEFAULT_NETMASK}"
 read -r -p "Passerelle (Par défaut : ${DEFAULT_GATEWAY}): " GATEWAY
 GATEWAY="${GATEWAY:-$DEFAULT_GATEWAY}"
-read -r -p "Serveurs DNS (séparés par des virgules, ex: 1.1.1.1,8.8.8.8): " DNS
+read -r -p "Serveurs DNS (Défaut: ${DEFAULT_DNS}): " DNS
+DNS="${DNS:-$DEFAULT_DNS}"
 read -r -p "Nom de domaine (optionnel, ex: web.lan.local): " SERVER_NAME
 
 DNS_LIST=$(echo "$DNS" | tr ',' ' ')
