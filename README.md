@@ -5,6 +5,9 @@ Ce dépôt permet de **créer et installer automatiquement** des VM (clients, se
 
 ---
 
+## Architecture
+![Architecture du projet](ressources/projet-reseaux-architecture.png)
+
 
 ## Prérequis
 - Windows + PowerShell
