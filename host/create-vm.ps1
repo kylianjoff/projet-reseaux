@@ -360,6 +360,12 @@ $memory = switch ($vmTypeChoice) {
     "3" { 1024 }
 }
 
+$vram = switch ($vmTypeChoice) {
+    "1" { 128 }
+    "2" { 64 }
+    "3" { 64 }
+}
+
 $cpus = 1
 $diskSizeMb = switch ($vmTypeChoice) {
     "1" { 20480 }
@@ -382,7 +388,7 @@ if ($vmTypeChoice -eq "3") {
     }
 
     & $VBoxManage import $OvaPath --vsys 0 --vmname $name
-    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus
+    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus --vram $vram
     if ($fwRole -eq "external") {
         # Interface 1 : NAT, Interface 2 : DMZ
         & $VBoxManage modifyvm $name --nic1 nat --nictype1 82540EM --cableconnected1 on
@@ -407,7 +413,7 @@ if ($vmTypeChoice -eq "3") {
     }
 
     & $VBoxManage createvm --name $name --ostype Debian_64 --register
-    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus
+    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus --vram $vram
     & $VBoxManage modifyvm $name --nic1 intnet --intnet1 $intNetName --nictype1 82540EM --cableconnected1 off
     & $VBoxManage modifyvm $name --nic2 nat --nictype2 82540EM --cableconnected2 on
 

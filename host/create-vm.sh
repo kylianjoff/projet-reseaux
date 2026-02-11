@@ -73,9 +73,9 @@ VM_NAME=$(ask "Nom de la VM" "$DEFAULT_NAME")
 
 # Mémoire, disque, CPU
 case "$VM_TYPE" in
-    "Client") MEMORY=4096 ; DISK=20480 ;;
-    "Serveur") MEMORY=1024 ; DISK=10240 ;;
-    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ;;
+    "Client") MEMORY=4096 ; DISK=20480 ; VRAM=128 ;;
+    "Serveur") MEMORY=1024 ; DISK=10240 ; VRAM=64 ;;
+    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ; VRAM=64 ;;
 esac
 CPUS=1
 
@@ -98,7 +98,7 @@ fi
 
 if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
     VBoxManage import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME"
-    VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS
+    VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     if [[ "$FW_ROLE" == "external" ]]; then
         VBoxManage modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
         VBoxManage modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
@@ -108,7 +108,7 @@ if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
     fi
 else
     VBoxManage createvm --name "$VM_NAME" --ostype Debian_64 --register
-    VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS
+    VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     VBoxManage modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
     VBoxManage modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
     VBoxManage storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
