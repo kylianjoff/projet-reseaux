@@ -179,7 +179,7 @@ d-i keyboard-configuration/xkb-keymap select fr
 d-i keyboard-configuration/layoutcode string fr
 d-i keyboard-configuration/variantcode string oss
 
-d-i netcfg/choose_interface select auto
+d-i netcfg/choose_interface select enp0s8
 d-i netcfg/get_hostname string $Hostname
 d-i netcfg/get_domain string $Domain
 
@@ -408,8 +408,8 @@ if ($vmTypeChoice -eq "3") {
 
     & $VBoxManage createvm --name $name --ostype Debian_64 --register
     & $VBoxManage modifyvm $name --memory $memory --cpus $cpus
-    & $VBoxManage modifyvm $name --nic1 nat --nictype1 82540EM --cableconnected1 on
-    & $VBoxManage modifyvm $name --nic2 intnet --intnet2 $intNetName --nictype2 82540EM --cableconnected2 on
+    & $VBoxManage modifyvm $name --nic1 intnet --intnet1 $intNetName --nictype1 82540EM --cableconnected1 off
+    & $VBoxManage modifyvm $name --nic2 nat --nictype2 82540EM --cableconnected2 on
 
     & $VBoxManage storagectl $name --name "SATA" --add sata --controller IntelAhci
     $diskPath = Join-Path $diskRoot "$name.vdi"
@@ -451,9 +451,9 @@ if ($vmTypeChoice -eq "3") {
                 throw ($unattendedOutput | Out-String)
             }
             try {
-                & $VBoxManage controlvm $name setlinkstate2 on
+                & $VBoxManage controlvm $name setlinkstate1 on
             } catch {
-                Write-Warning "Impossible d'activer la seconde carte réseau après installation."
+                Write-Warning "Impossible d'activer la carte réseau 1 après installation."
             }
         } catch {
             Write-Error "Installation automatique échouée.`n$($_.Exception.Message)"
