@@ -109,8 +109,8 @@ if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
 else
     VBoxManage createvm --name "$VM_NAME" --ostype Debian_64 --register
     VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS
-    VBoxManage modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
-    VBoxManage modifyvm "$VM_NAME" --nic2 intnet --intnet2 "$INTNET_NAME" --nictype2 82540EM --cableconnected2 on
+    VBoxManage modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
+    VBoxManage modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
     VBoxManage storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
     DISK_PATH="$VDI_DIR/$VM_NAME.vdi"
     VBoxManage createhd --filename "$DISK_PATH" --size $DISK --variant Standard
