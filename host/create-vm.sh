@@ -185,7 +185,7 @@ VDI_DIR="$PROJECT_ROOT/vdi"
 PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
 PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
 # Dossier de base des VM (sans espace pour éviter les bugs VBox)
-VM_BASEFOLDER="/home/student/VirtualBox-VMs"
+VM_BASEFOLDER="/home/student/VirtualBox\ VMs"
 
 mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
 
