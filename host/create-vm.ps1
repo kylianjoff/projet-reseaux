@@ -366,6 +366,9 @@ $vram = switch ($vmTypeChoice) {
     "3" { 128 }
 }
 
+$graphicsController = "VMSVGA"
+$accel3d = if ($vmTypeChoice -eq "1") { "on" } else { "off" }
+
 $cpus = 1
 $diskSizeMb = switch ($vmTypeChoice) {
     "1" { 20480 }
@@ -388,7 +391,7 @@ if ($vmTypeChoice -eq "3") {
     }
 
     & $VBoxManage import $OvaPath --vsys 0 --vmname $name
-    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus --vram $vram
+    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus --vram $vram --graphicscontroller $graphicsController --accelerate3d $accel3d --accelerate2dvideo off
     if ($fwRole -eq "external") {
         # Interface 1 : NAT, Interface 2 : DMZ
         & $VBoxManage modifyvm $name --nic1 nat --nictype1 82540EM --cableconnected1 on
@@ -413,7 +416,7 @@ if ($vmTypeChoice -eq "3") {
     }
 
     & $VBoxManage createvm --name $name --ostype Debian_64 --register
-    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus --vram $vram
+    & $VBoxManage modifyvm $name --memory $memory --cpus $cpus --vram $vram --graphicscontroller $graphicsController --accelerate3d $accel3d --accelerate2dvideo off
     & $VBoxManage modifyvm $name --nic1 intnet --intnet1 $intNetName --nictype1 82540EM --cableconnected1 off
     & $VBoxManage modifyvm $name --nic2 nat --nictype2 82540EM --cableconnected2 on
 

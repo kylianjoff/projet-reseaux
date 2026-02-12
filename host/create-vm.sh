@@ -318,9 +318,9 @@ fi
 
 # Mémoire, disque, CPU
 case "$VM_TYPE" in
-    "Client") MEMORY=4096 ; DISK=20480 ; VRAM=256 ;;
-    "Serveur") MEMORY=1024 ; DISK=10240 ; VRAM=128 ;;
-    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ; VRAM=128 ;;
+    "Client") MEMORY=4096 ; DISK=20480 ; VRAM=256 ; GRAPHICS_CONTROLLER="VMSVGA" ; ACCEL_3D="on" ;;
+    "Serveur") MEMORY=1024 ; DISK=10240 ; VRAM=128 ; GRAPHICS_CONTROLLER="VMSVGA" ; ACCEL_3D="off" ;;
+    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ; VRAM=128 ; GRAPHICS_CONTROLLER="VMSVGA" ; ACCEL_3D="off" ;;
 esac
 CPUS=1
 
@@ -372,7 +372,7 @@ if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
     echo "[DEBUG] Import OVA $OVA_FILE sous le nom $VM_NAME..."
     "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME" || { echo "[ERREUR] Erreur import OVA"; exit 1; }
     echo "[DEBUG] Modification mémoire/cpu/vram..."
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM --graphicscontroller "$GRAPHICS_CONTROLLER" --accelerate3d $ACCEL_3D --accelerate2dvideo off || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
     if [[ "$FW_ROLE" == "external" ]]; then
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
@@ -403,7 +403,7 @@ else
     echo "[DEBUG] Création de la VM $VM_NAME dans $VM_BASEFOLDER..."
     "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register || { echo "[ERREUR] Erreur createvm"; exit 1; }
     echo "[DEBUG] Modification mémoire/cpu/vram..."
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM --graphicscontroller "$GRAPHICS_CONTROLLER" --accelerate3d $ACCEL_3D --accelerate2dvideo off || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
     echo "[DEBUG] Liste des VMs après création :"
