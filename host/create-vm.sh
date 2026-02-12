@@ -297,7 +297,7 @@ else
     # Génération du preseed
     generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
 
-    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --register
+    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "/home/student/VirtualBox VMs" --register
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
