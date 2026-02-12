@@ -205,8 +205,14 @@ GUEST_SCRIPTS="$PROJECT_ROOT/guest"
 ISO_DIR="$PROJECT_ROOT/iso"
 OVA_DIR="$PROJECT_ROOT/ova"
 VDI_DIR="$PROJECT_ROOT/vdi"
+# Correction : éviter double 'preseed' dans le chemin
 PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
 PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
+# S'assure que le dossier existe et est accessible
+if [ ! -d "$PRESEED_DIR" ]; then
+    mkdir -p "$PRESEED_DIR"
+    chmod 755 "$PRESEED_DIR"
+fi
 # Dossier de base des VM (dossier par défaut VirtualBox, AVEC espace)
 VM_BASEFOLDER="$HOME/VirtualBox VMs"
 mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
