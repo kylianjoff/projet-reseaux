@@ -87,37 +87,63 @@ else
     if [[ ! -f "$ISO_PATH" ]]; then echo "ISO introuvable: $ISO_PATH"; exit 1; fi
 fi
 
-# VBoxManage doit être dans le PATH
-command -v VBoxManage >/dev/null || { echo "VBoxManage non trouvé. Installez VirtualBox."; exit 1; }
+
+# Détection automatique de VBoxManage (VirtualBox)
+function find_vboxmanage() {
+    # 1. Si VBoxManage est dans le PATH
+    if command -v VBoxManage >/dev/null 2>&1; then
+        command -v VBoxManage
+        return 0
+    fi
+    # 2. Emplacement standard Windows (pour WSL ou Git Bash)
+    for d in "/mnt/c/Program Files/Oracle/VirtualBox" "/c/Program Files/Oracle/VirtualBox"; do
+        if [ -x "$d/VBoxManage.exe" ]; then
+            echo "$d/VBoxManage.exe"
+            return 0
+        fi
+    done
+    # 3. Variable d'environnement VBOX_MSI_INSTALL_PATH (pour WSL)
+    if [ -n "${VBOX_MSI_INSTALL_PATH:-}" ] && [ -x "${VBOX_MSI_INSTALL_PATH}/VBoxManage.exe" ]; then
+        echo "${VBOX_MSI_INSTALL_PATH}/VBoxManage.exe"
+        return 0
+    fi
+    return 1
+}
+
+VBOXMANAGE_PATH=$(find_vboxmanage) || { echo "VBoxManage (VirtualBox) non trouvé. Installez VirtualBox ou ajoutez VBoxManage au PATH."; exit 1; }
+echo "VBoxManage trouvé : $VBOXMANAGE_PATH"
+
 
 # Création de la VM
-if VBoxManage list vms | grep -q '"'$VM_NAME'"'; then
+
+if "$VBOXMANAGE_PATH" list vms | grep -q '"'$VM_NAME'"'; then
     echo "Nom déjà utilisé. Ajoutez un suffixe."
     exit 1
 fi
 
+
 if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    VBoxManage import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME"
-    VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
+    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME"
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     if [[ "$FW_ROLE" == "external" ]]; then
-        VBoxManage modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
-        VBoxManage modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
+        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
+        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
     else
-        VBoxManage modifyvm "$VM_NAME" --nic1 intnet --intnet1 LAN --nictype1 82540EM --cableconnected1 on
-        VBoxManage modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
+        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 LAN --nictype1 82540EM --cableconnected1 on
+        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
     fi
 else
-    VBoxManage createvm --name "$VM_NAME" --ostype Debian_64 --register
-    VBoxManage modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
-    VBoxManage modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
-    VBoxManage modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
-    VBoxManage storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
+    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --register
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
+    "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
     DISK_PATH="$VDI_DIR/$VM_NAME.vdi"
-    VBoxManage createhd --filename "$DISK_PATH" --size $DISK --variant Standard
-    VBoxManage storageattach "$VM_NAME" --storagectl "SATA" --port 0 --type hdd --medium "$DISK_PATH"
-    VBoxManage storageattach "$VM_NAME" --storagectl "SATA" --port 1 --type dvddrive --medium "$ISO_PATH"
+    "$VBOXMANAGE_PATH" createhd --filename "$DISK_PATH" --size $DISK --variant Standard
+    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --type hdd --medium "$DISK_PATH"
+    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --type dvddrive --medium "$ISO_PATH"
     # Démarrage en mode headless
-    VBoxManage startvm "$VM_NAME" --type headless
+    "$VBOXMANAGE_PATH" startvm "$VM_NAME" --type headless
 fi
 
 echo "VM '$VM_NAME' prête. Réseau: NAT + intnet '$INTNET_NAME'."
