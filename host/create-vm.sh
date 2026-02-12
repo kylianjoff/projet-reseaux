@@ -85,9 +85,9 @@ function generate_preseed() {
     local script_commands="in-target /bin/sh -c \"mkdir -p /home/${admin_user} /opt/projet-reseaux/guest\""
     for script in "${script_files[@]}"; do
         if [[ -f "$GUEST_SCRIPTS/$script" ]]; then
-            local content=$(awk '{printf "%s\\n", $0}' "$GUEST_SCRIPTS/$script" | base64 -w0)
-            script_commands+="; in-target /bin/sh -c \"printf %s $content | base64 -d > /home/${admin_user}/${script}; chmod +x /home/${admin_user}/${script}\""
-            script_commands+="; in-target /bin/sh -c \"printf %s $content | base64 -d > /opt/projet-reseaux/guest/${script}; chmod +x /opt/projet-reseaux/guest/${script}\""
+            local content=$(sed 's/\r$//' "$GUEST_SCRIPTS/$script" | base64 -w0)
+            script_commands+="; in-target /bin/sh -c \"printf %s '$content' | base64 -d | tr -d '\\r' > /home/${admin_user}/${script}; chmod +x /home/${admin_user}/${script}\""
+            script_commands+="; in-target /bin/sh -c \"printf %s '$content' | base64 -d | tr -d '\\r' > /opt/projet-reseaux/guest/${script}; chmod +x /opt/projet-reseaux/guest/${script}\""
         fi
     done
     script_commands+="; in-target /bin/sh -c \"chown -R ${admin_user}:${admin_user} /home/${admin_user}\""
