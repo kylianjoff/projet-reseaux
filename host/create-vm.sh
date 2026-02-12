@@ -1,4 +1,17 @@
 #!/bin/bash
+set -euo pipefail
+
+# Détection automatique de VBoxManage (VirtualBox)
+function find_vboxmanage() {
+    if command -v VBoxManage >/dev/null 2>&1; then
+        command -v VBoxManage
+        return 0
+    fi
+    echo "VBoxManage (VirtualBox) non trouvé. Installez VirtualBox ou ajoutez VBoxManage au PATH." >&2
+    exit 1
+}
+VBOXMANAGE_PATH=$(find_vboxmanage)
+
 # Vérifie si la VM est verrouillée avant toute opération
 function check_vm_locked() {
     local vm_name="$1"
@@ -196,10 +209,9 @@ VDI_DIR="$PROJECT_ROOT/vdi"
 PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
 PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
 # Dossier de base des VM (universel, sans espace ni caractère spécial)
-VM_BASEFOLDER="/var/virtualbox-vms"
-
+VM_BASEFOLDER="$HOME/VirtualBox-VMs"
 mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
-sudo chown "$USER":"$USER" "$VM_BASEFOLDER"
+
 
 # Choix du type de VM
 PS3="Type de VM : "
@@ -320,7 +332,10 @@ echo "VBoxManage trouvé : $VBOXMANAGE_PATH"
 
 
 if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME"
+    # Vérifie si la VM est verrouillée avant suppression
+    check_vm_locked "$VM_NAME"
+    remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
+    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME" || { echo "Erreur import OVA"; exit 1; }
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     if [[ "$FW_ROLE" == "external" ]]; then
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
