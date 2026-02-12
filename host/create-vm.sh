@@ -42,15 +42,14 @@ fi
 function remove_existing_vm() {
     local vm_name="$1"
     local basefolder="$2"
-    # Si la VM est enregistrée dans VirtualBox, on la supprime
+    echo "[DEBUG] Vérification et suppression de la VM $vm_name si elle existe..."
     if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
-        echo "Suppression de la VM VirtualBox existante $vm_name"
-        "$VBOXMANAGE_PATH" unregistervm "$vm_name" --delete || true
+        echo "[DEBUG] Suppression de la VM VirtualBox existante $vm_name"
+        "$VBOXMANAGE_PATH" unregistervm "$vm_name" --delete || { echo "[ERREUR] Échec suppression VM $vm_name"; }
     fi
-    # Supprime le dossier de la VM s'il reste
     local vbox_dir="$basefolder/$vm_name"
     if [ -d "$vbox_dir" ]; then
-        echo "Suppression du dossier existant $vbox_dir (et .vbox)"
+        echo "[DEBUG] Suppression du dossier existant $vbox_dir (et .vbox)"
         rm -rf "$vbox_dir"
     fi
 }
@@ -332,11 +331,13 @@ echo "VBoxManage trouvé : $VBOXMANAGE_PATH"
 
 
 if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    # Vérifie si la VM est verrouillée avant suppression
+    echo "[DEBUG] Suppression éventuelle d'une VM existante avant import OVA..."
     check_vm_locked "$VM_NAME"
     remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
-    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME" || { echo "Erreur import OVA"; exit 1; }
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
+    echo "[DEBUG] Import OVA $OVA_FILE sous le nom $VM_NAME..."
+    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME" || { echo "[ERREUR] Erreur import OVA"; exit 1; }
+    echo "[DEBUG] Modification mémoire/cpu/vram..."
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
     if [[ "$FW_ROLE" == "external" ]]; then
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
@@ -344,6 +345,8 @@ if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 LAN --nictype1 82540EM --cableconnected1 on
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
     fi
+    echo "[DEBUG] Liste des VMs après import :"
+    "$VBOXMANAGE_PATH" list vms
 
 else
     # Préparation scripts invités
@@ -359,14 +362,17 @@ else
     # Génération du preseed
     generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
 
-    # Vérifie si la VM est verrouillée avant suppression
+    echo "[DEBUG] Suppression éventuelle d'une VM existante avant création..."
     check_vm_locked "$VM_NAME"
-    # Supprime la VM VirtualBox et le dossier si déjà existant
     remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
-    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
+    echo "[DEBUG] Création de la VM $VM_NAME dans $VM_BASEFOLDER..."
+    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register || { echo "[ERREUR] Erreur createvm"; exit 1; }
+    echo "[DEBUG] Modification mémoire/cpu/vram..."
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
+    echo "[DEBUG] Liste des VMs après création :"
+    "$VBOXMANAGE_PATH" list vms
 
     # Correction : supprime le contrôleur SATA s'il existe déjà (évite les conflits)
     if "$VBOXMANAGE_PATH" showvminfo "$VM_NAME" | grep -q 'SATA'; then
@@ -409,4 +415,6 @@ else
     fi
 fi
 
+echo "[DEBUG] Liste finale des VMs connues de VirtualBox :"
+"$VBOXMANAGE_PATH" list vms
 echo "VM '$VM_NAME' prête. Réseau: NAT + intnet '$INTNET_NAME'."
