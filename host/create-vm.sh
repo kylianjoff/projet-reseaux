@@ -106,6 +106,7 @@ d-i debian-installer/country string FR
 d-i debconf/priority string critical
 d-i preseed/interactive boolean false
 
+# Miroir Debian
 d-i mirror/country string manual
 d-i mirror/http/hostname string deb.debian.org
 d-i mirror/http/directory string /debian
@@ -115,10 +116,15 @@ d-i apt-setup/cdrom/set-first boolean false
 d-i apt-setup/cdrom/set-next boolean false
 d-i apt-setup/disable-cdrom-entries boolean true
 d-i localechooser/supported-locales multiselect fr_FR.UTF-8
+
+# Clavier console et X11
 d-i console-setup/ask_detect boolean false
+d-i console-keymaps-at/keymap select fr
 d-i keyboard-configuration/xkb-keymap select fr
 d-i keyboard-configuration/layoutcode string fr
 d-i keyboard-configuration/variantcode string oss
+d-i keyboard-configuration/modelcode string pc105
+d-i keyboard-configuration/optionscode string
 
 d-i netcfg/choose_interface select enp0s8
 d-i netcfg/get_hostname string $hostname
