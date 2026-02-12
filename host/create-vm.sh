@@ -151,8 +151,10 @@ OVA_DIR="$PROJECT_ROOT/ova"
 VDI_DIR="$PROJECT_ROOT/vdi"
 PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
 PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
+# Dossier de base des VM (sans espace pour éviter les bugs VBox)
+VM_BASEFOLDER="/home/student/VirtualBox-VMs"
 
-mkdir -p "$VDI_DIR" "$PRESEED_DIR"
+mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
 
 # Choix du type de VM
 PS3="Type de VM : "
@@ -297,7 +299,7 @@ else
     # Génération du preseed
     generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
 
-    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "/home/student/VirtualBox VMs" --register
+    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
