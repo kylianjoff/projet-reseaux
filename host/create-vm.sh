@@ -1,8 +1,14 @@
 #!/bin/bash
-# Supprime le dossier et le .vbox d'une VM si déjà existant
-function remove_existing_vm_dir() {
+# Supprime la VM VirtualBox et le dossier si déjà existant
+function remove_existing_vm() {
     local vm_name="$1"
     local basefolder="$2"
+    # Si la VM est enregistrée dans VirtualBox, on la supprime
+    if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
+        echo "Suppression de la VM VirtualBox existante $vm_name"
+        "$VBOXMANAGE_PATH" unregistervm "$vm_name" --delete || true
+    fi
+    # Supprime le dossier de la VM s'il reste
     local vbox_dir="$basefolder/$vm_name"
     if [ -d "$vbox_dir" ]; then
         echo "Suppression du dossier existant $vbox_dir (et .vbox)"
@@ -311,8 +317,8 @@ else
     # Génération du preseed
     generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
 
-    # Supprime le .vbox et le dossier si déjà existant
-    remove_existing_vm_dir "$VM_NAME" "$VM_BASEFOLDER"
+    # Supprime la VM VirtualBox et le dossier si déjà existant
+    remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
     "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
