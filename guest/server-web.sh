@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "${EUID}" -ne 0 ]; then
-    echo "Ce script doit être exécuté en root. (su - puis mot de passe root)" >&2
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+. "$SCRIPT_DIR/common.sh"
+
+require_root
 
 echo "== Installation des dépendances (serveur Debian + Web) =="
 export DEBIAN_FRONTEND=noninteractive
@@ -23,13 +24,16 @@ apt-get install -y \
     net-tools \
     iproute2 \
     ifupdown \
-    apache2
+    apache2 \
+    whiptail
+
+ensure_whiptail
 
 DEFAULT_USER="administrateur"
 
-echo
-read -r -p "Nom de l'utilisateur administrateur (Par défaut : ${DEFAULT_USER}): " USER
-USER="${USER:-$DEFAULT_USER}"
+ui_info "Reseau" "Dans quel reseau se trouve le serveur ?"
+
+USER=$(ui_input "Utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
 if id "$USER" >/dev/null 2>&1; then
     usermod -aG sudo "$USER"
@@ -37,12 +41,9 @@ else
     echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
 fi
 
-echo
-echo "Dans quel réseau se trouve le serveur ?"
-echo "1) DMZ (192.168.10.0/24)"
-echo "2) LAN (192.168.20.0/24)"
-read -r -p "Choix [1-2] (Défaut: 1): " NETWORK_CHOICE
-NETWORK_CHOICE="${NETWORK_CHOICE:-1}"
+NETWORK_CHOICE=$(ui_menu "Reseau" "Dans quel reseau se trouve le serveur ?" "1" \
+    "DMZ (192.168.10.0/24)" \
+    "LAN (192.168.20.0/24)") || exit 1
 
 if [ "$NETWORK_CHOICE" = "1" ]; then
     NETWORK_PREFIX="192.168.10."
@@ -58,22 +59,18 @@ DEFAULT_IFACE="enp0s3"
 DEFAULT_LAST_OCTET="10"
 DEFAULT_NETMASK="255.255.255.0"
 
-read -r -p "Nom de l'interface réseau (Par défaut : ${DEFAULT_IFACE}): " IFACE
-IFACE="${IFACE:-$DEFAULT_IFACE}"
-read -r -p "Dernier octet de l'adresse IP du serveur Web (Par défaut : ${DEFAULT_LAST_OCTET}): " LAST_OCTET
-LAST_OCTET="${LAST_OCTET:-$DEFAULT_LAST_OCTET}"
+IFACE=$(ui_input "Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
+LAST_OCTET=$(ui_input "Adresse IP" "Dernier octet de l'adresse IP du serveur Web" "$DEFAULT_LAST_OCTET") || exit 1
 SERVER_IP="${NETWORK_PREFIX}${LAST_OCTET}"
-read -r -p "Masque réseau (Par défaut : ${DEFAULT_NETMASK}): " NETMASK
-NETMASK="${NETMASK:-$DEFAULT_NETMASK}"
-read -r -p "Passerelle (Par défaut : ${DEFAULT_GATEWAY}): " GATEWAY
-GATEWAY="${GATEWAY:-$DEFAULT_GATEWAY}"
-read -r -p "Serveurs DNS (Défaut: ${DEFAULT_DNS}): " DNS
+NETMASK=$(ui_input "Reseau" "Masque reseau" "$DEFAULT_NETMASK") || exit 1
+GATEWAY=$(ui_input "Reseau" "Passerelle" "$DEFAULT_GATEWAY") || exit 1
+DNS=$(ui_input "DNS" "Serveurs DNS" "$DEFAULT_DNS") || exit 1
 DNS="${DNS:-$DEFAULT_DNS}"
-read -r -p "Nom de domaine (optionnel, ex: web.lan.local): " SERVER_NAME
+SERVER_NAME=$(ui_input "Domaine" "Nom de domaine (optionnel)" "") || exit 1
 
 DNS_LIST=$(echo "$DNS" | tr ',' ' ')
 
-echo "== Configuration IP statique =="
+ui_info "Reseau" "Configuration IP statique"
 if [ -f /etc/network/interfaces ]; then
     cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
@@ -90,7 +87,7 @@ iface ${IFACE} inet static
     dns-nameservers ${DNS_LIST}
 EOF
 
-echo "== Configuration Apache =="
+ui_info "Apache" "Configuration Apache"
 cat > /etc/apache2/sites-available/000-default.conf <<EOF
 <VirtualHost *:80>
 $( [ -n "$SERVER_NAME" ] && echo "    ServerName ${SERVER_NAME}" )
@@ -116,18 +113,12 @@ cat > /var/www/html/index.html <<EOF
 </html>
 EOF
 
-echo "== Redémarrage des services =="
+ui_info "Services" "Redemarrage des services"
 systemctl restart networking
 systemctl enable apache2
 systemctl restart apache2
 
-echo "== Terminé =="
-echo "Accès: http://${SERVER_IP}/"
-echo "Redémarrez le serveur pour appliquer tous les configurations: reboot"
-echo ""
-read -r -p "Voulez-vous redémarrer le serveur maintenant ? [O/N] : " REBOOT_CHOICE
-REBOOT_CHOICE="${REBOOT_CHOICE:-N}"
-
-if [ "$REBOOT_CHOICE" = "O" ]; then
+ui_msg "Termine" "Acces: http://${SERVER_IP}/\nRedemarrez le serveur pour appliquer toutes les configurations."
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70 --defaultno; then
     reboot now
 fi

@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "${EUID}" -ne 0 ]; then
-    echo "Ce script doit être exécuté en root. (su - puis mot de passe root)" >&2
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+. "$SCRIPT_DIR/common.sh"
+
+require_root
 
 echo "== Installation des dépendances (Client Debian) =="
 export DEBIAN_FRONTEND=noninteractive
+echo "================================="
+echo " [1/5] Recherche de mises à jour "
+echo "================================="
 if ! apt-get update -y; then
     echo "Mise à jour échouée, tentative avec --allow-releaseinfo-change..."
     apt-get update -y --allow-releaseinfo-change
 fi
+echo "============================================"
+echo " [2/5] Installation des paquets nécessaires "
+echo "============================================"
 apt-get install -y \
     sudo \
     curl \
@@ -22,26 +29,24 @@ apt-get install -y \
     ca-certificates \
     net-tools \
     iproute2 \
-    ifupdown
+    ifupdown \
+    whiptail
+
+ensure_whiptail
 
 DEFAULT_USER="administrateur"
-
-echo
-read -r -p "Nom de l'utilisateur administrateur (Par défaut : ${DEFAULT_USER}): " USER
-USER="${USER:-$DEFAULT_USER}"
+ui_info "Etape 3/5" "Ajout de l'utilisateur au groupe sudo"
+USER=$(ui_input "Utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
 if id "$USER" >/dev/null 2>&1; then
     usermod -aG sudo "$USER"
 else
     echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
 fi
-
-echo
-echo "Dans quel réseau se trouve le serveur ?"
-echo "1) DMZ (192.168.10.0/24)"
-echo "2) LAN (192.168.20.0/24)"
-read -r -p "Choix [1-2] (Défaut: 1): " NETWORK_CHOICE
-NETWORK_CHOICE="${NETWORK_CHOICE:-1}"
+ui_info "Etape 4/5" "Configuration de l'interface reseau"
+NETWORK_CHOICE=$(ui_menu "Reseau" "Dans quel reseau se trouve le client ?" "1" \
+    "DMZ (192.168.10.0/24)" \
+    "LAN (192.168.20.0/24)") || exit 1
 
 if [ "$NETWORK_CHOICE" = "1" ]; then
     NETWORK_PREFIX="192.168.10."
@@ -57,26 +62,22 @@ DEFAULT_IFACE="enp0s3"
 DEFAULT_LAST_OCTET="100"
 DEFAULT_NETMASK="255.255.255.0"
 
-read -r -p "Nom de l'interface réseau (Par défaut : ${DEFAULT_IFACE}): " IFACE
-IFACE="${IFACE:-$DEFAULT_IFACE}"
+IFACE=$(ui_input "Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
 if [ "$NETWORK_CHOICE" = "1" ]; then
-    read -r -p "Dernier octet de l'adresse IP du serveur Web (Par défaut : ${DEFAULT_LAST_OCTET}): " LAST_OCTET
-    LAST_OCTET="${LAST_OCTET:-$DEFAULT_LAST_OCTET}"
+    LAST_OCTET=$(ui_input "Adresse IP" "Dernier octet de l'adresse IP" "$DEFAULT_LAST_OCTET") || exit 1
     SERVER_IP="${NETWORK_PREFIX}${LAST_OCTET}"
-    read -r -p "Masque réseau (Par défaut : ${DEFAULT_NETMASK}): " NETMASK
-    NETMASK="${NETMASK:-$DEFAULT_NETMASK}"
-    read -r -p "Passerelle (Par défaut : ${DEFAULT_GATEWAY}): " GATEWAY
-    GATEWAY="${GATEWAY:-$DEFAULT_GATEWAY}"
-    read -r -p "Serveurs DNS (Défaut: ${DEFAULT_DNS}): " DNS
+    NETMASK=$(ui_input "Reseau" "Masque reseau" "$DEFAULT_NETMASK") || exit 1
+    GATEWAY=$(ui_input "Reseau" "Passerelle" "$DEFAULT_GATEWAY") || exit 1
+    DNS=$(ui_input "DNS" "Serveurs DNS" "$DEFAULT_DNS") || exit 1
 else
-    echo "Le serveur est configuré pour utiliser DHCP sur le réseau LAN."
+    ui_msg "Information" "Le client est configure pour utiliser DHCP sur le reseau LAN."
 fi
 DNS="${DNS:-$DEFAULT_DNS}"
-read -r -p "Nom de domaine (optionnel, ex: web.lan.local): " SERVER_NAME
+SERVER_NAME=$(ui_input "Domaine" "Nom de domaine (optionnel)" "") || exit 1
 
 DNS_LIST=$(echo "$DNS" | tr ',' ' ')
 
-echo "== Configuration IP statique =="
+ui_info "Reseau" "Configuration IP statique"
 if [ -f /etc/network/interfaces ]; then
     cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
@@ -103,15 +104,10 @@ else
 EOF
 fi
 
-echo "== Redémarrage des services =="
+ui_info "Etape 5/5" "Redemarrage des services"
 systemctl restart networking
 
-echo "== Terminé =="
-echo "Redémarrez le client pour appliquer toutes les configurations: reboot"
-echo ""
-read -r -p "Voulez-vous redémarrer le client maintenant ? [O/N] : " REBOOT_CHOICE
-REBOOT_CHOICE="${REBOOT_CHOICE:-N}"
-
-if [ "$REBOOT_CHOICE" = "O" ]; then
+ui_msg "Termine" "Redemarrez le client pour appliquer toutes les configurations."
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le client maintenant ?" 10 70 --defaultno; then
     reboot now
 fi

@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "${EUID}" -ne 0 ]; then
-	echo "Ce script doit être exécuté en root. (su - puis mot de passe root)" >&2
-	exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+. "$SCRIPT_DIR/common.sh"
+
+require_root
 
 echo "== Installation des dépendances (serveur Debian + DHCP) =="
 export DEBIAN_FRONTEND=noninteractive
@@ -24,13 +25,14 @@ apt-get install -y \
 	iproute2 \
 	ipcalc \
 	ifupdown \
-	isc-dhcp-server
+	isc-dhcp-server \
+	whiptail
+
+ensure_whiptail
 
 DEFAULT_USER="administrateur"
 
-echo
-read -r -p "Nom de l'utilisateur administrateur (Par défaut : ${DEFAULT_USER}): " USER
-USER="${USER:-$DEFAULT_USER}"
+USER=$(ui_input "Utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
 if id "$USER" >/dev/null 2>&1; then
 	usermod -aG sudo "$USER"
@@ -41,23 +43,21 @@ fi
 
 DEFAULT_IFACE="enp0s3"
 
-echo
-read -r -p "Nom de l'interface réseau (Par défaut : ${DEFAULT_IFACE}): " IFACE
-IFACE="${IFACE:-$DEFAULT_IFACE}"
-read -r -p "Adresse IP du serveur DHCP (DMZ : 192.168.10.0/24 | LAN : 192.168.20.0/24): " SERVER_IP
-read -r -p "Masque réseau (ex: 255.255.255.0): " NETMASK
-read -r -p "Passerelle (DMZ : 192.168.10.254 | LAN : 192.168.20.254): " GATEWAY
-read -r -p "Serveurs DNS (séparés par des virgules, ex: 1.1.1.1,8.8.8.8): " DNS
-read -r -p "Plage DHCP - début (ex: 192.168.20.100): " RANGE_START
-read -r -p "Plage DHCP - fin (ex: 192.168.20.200): " RANGE_END
-read -r -p "Nom de domaine (optionnel, ex: lan.local): " DOMAIN_NAME
+IFACE=$(ui_input "Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
+SERVER_IP=$(ui_input "Adresse IP" "Adresse IP du serveur DHCP" "192.168.20.2") || exit 1
+NETMASK=$(ui_input "Reseau" "Masque reseau" "255.255.255.0") || exit 1
+GATEWAY=$(ui_input "Reseau" "Passerelle" "192.168.20.254") || exit 1
+DNS=$(ui_input "DNS" "Serveurs DNS (separes par des virgules)" "1.1.1.1,8.8.8.8") || exit 1
+RANGE_START=$(ui_input "DHCP" "Plage DHCP - debut" "192.168.20.100") || exit 1
+RANGE_END=$(ui_input "DHCP" "Plage DHCP - fin" "192.168.20.200") || exit 1
+DOMAIN_NAME=$(ui_input "Domaine" "Nom de domaine (optionnel)" "") || exit 1
 
 DNS_LIST=$(echo "$DNS" | tr ',' ' ')
 
 SUBNET=$(ipcalc -n "$SERVER_IP" "$NETMASK" | awk -F= '/Network/ {print $2}')
 BROADCAST=$(ipcalc -b "$SERVER_IP" "$NETMASK" | awk -F= '/Broadcast/ {print $2}')
 
-echo "== Configuration IP statique =="
+ui_info "Reseau" "Configuration IP statique"
 if [ -f /etc/network/interfaces ]; then
 	cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
@@ -74,7 +74,7 @@ iface ${IFACE} inet static
 	dns-nameservers ${DNS_LIST}
 EOF
 
-echo "== Configuration ISC DHCP =="
+ui_info "DHCP" "Configuration ISC DHCP"
 if [ -f /etc/dhcp/dhcpd.conf ]; then
 	cp /etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf.bak.$(date +%s)
 fi
@@ -105,7 +105,7 @@ EOF
 
 rm -f /tmp/dhcp-options.conf
 
-echo "== Définition de l'interface DHCP =="
+ui_info "DHCP" "Definition de l'interface DHCP"
 if [ -f /etc/default/isc-dhcp-server ]; then
 	cp /etc/default/isc-dhcp-server /etc/default/isc-dhcp-server.bak.$(date +%s)
 fi
@@ -114,13 +114,9 @@ cat > /etc/default/isc-dhcp-server <<EOF
 INTERFACESv4="${IFACE}"
 EOF
 
-echo "== Redémarrage des services =="
+ui_info "Services" "Redemarrage des services"
 systemctl restart networking
 systemctl enable isc-dhcp-server
 systemctl restart isc-dhcp-server
 
-echo "== Terminé =="
-echo "Vérifiez le statut avec: systemctl status isc-dhcp-server"
-echo ""
-echo "Redémarrez le serveur pour appliquer toutes les configurations: reboot"
-echo ""
+ui_msg "Termine" "Verifiez le statut avec: systemctl status isc-dhcp-server\nRedemarrez le serveur pour appliquer toutes les configurations."

@@ -1,4 +1,8 @@
 #!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+. "$SCRIPT_DIR/common.sh"
 # =========================================
 # Configuration du SERVEUR OpenVPN
 # =========================================
@@ -11,18 +15,20 @@ echo " Configuration du SERVEUR OpenVPN"
 echo "========================================="
 
 # Vérification root
-if [ "$EUID" -ne 0 ]; then
-  echo "❌ Veuillez exécuter ce script en root."
-  exit 1
-fi
+require_root
 
-echo "[0/12] Préparation installation non interactive"
+apt update -y
+apt install -y whiptail
+
+ensure_whiptail
+
+ui_info "Etape 0/12" "Preparation installation non interactive"
 export DEBIAN_FRONTEND=noninteractive
 
 # =========================================
 # [1/12] Configuration Réseau DMZ
 # =========================================
-echo "[1/12] Configuration réseau DMZ fixe"
+ui_info "Etape 1/12" "Configuration reseau DMZ fixe"
 
 # Détection interface réseau (exclure lo et interfaces down)
 ETH_DMZ=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n1)
@@ -55,14 +61,13 @@ echo "✅ Réseau DMZ configuré : 192.168.10.12/24"
 # =========================================
 # [2/12] Mise à Jour Système
 # =========================================
-echo "[2/12] Mise à jour des paquets"
-apt update -y
+ui_info "Etape 2/12" "Mise a jour des paquets"
 apt upgrade -y
 
 # =========================================
 # [3/12] Installation OpenVPN et Easy-RSA
 # =========================================
-echo "[3/12] Installation OpenVPN et Easy-RSA"
+ui_info "Etape 3/12" "Installation OpenVPN et Easy-RSA"
 apt install -y openvpn easy-rsa iptables ufw
 
 # Vérification installation
@@ -76,7 +81,7 @@ echo "✅ OpenVPN installé : $(openvpn --version | head -n1)"
 # =========================================
 # [4/12] Configuration Easy-RSA (PKI)
 # =========================================
-echo "[4/12] Configuration de l'infrastructure PKI"
+ui_info "Etape 4/12" "Configuration de l'infrastructure PKI"
 
 # Créer répertoire Easy-RSA
 mkdir -p /etc/openvpn/easy-rsa
@@ -105,7 +110,7 @@ echo "✅ PKI initialisée"
 # =========================================
 # [5/12] Génération Certificats
 # =========================================
-echo "[5/12] Génération des certificats (CA, Serveur, Clients)"
+ui_info "Etape 5/12" "Generation des certificats (CA, Serveur, Clients)"
 
 # Générer CA (Certificate Authority)
 echo "Génération du certificat CA..."
@@ -133,7 +138,7 @@ echo "✅ Tous les certificats générés"
 # =========================================
 # [6/12] Copie des Certificats
 # =========================================
-echo "[6/12] Copie des certificats dans /etc/openvpn"
+ui_info "Etape 6/12" "Copie des certificats dans /etc/openvpn"
 
 # Copier les fichiers nécessaires
 cp pki/ca.crt /etc/openvpn/
@@ -146,7 +151,7 @@ echo "✅ Certificats copiés"
 # =========================================
 # [7/12] Configuration OpenVPN Serveur
 # =========================================
-echo "[7/12] Création du fichier de configuration OpenVPN"
+ui_info "Etape 7/12" "Creation du fichier de configuration OpenVPN"
 
 cat > /etc/openvpn/server.conf << 'EOF'
 # Configuration OpenVPN Server
@@ -215,7 +220,7 @@ echo "✅ Configuration serveur créée"
 # =========================================
 # [8/12] Activation IP Forwarding
 # =========================================
-echo "[8/12] Activation du routage IP"
+ui_info "Etape 8/12" "Activation du routage IP"
 
 # Activer immédiatement
 echo 1 > /proc/sys/net/ipv4/ip_forward
@@ -231,7 +236,7 @@ echo "✅ IP Forwarding activé"
 # =========================================
 # [9/12] Configuration Firewall (iptables)
 # =========================================
-echo "[9/12] Configuration du firewall"
+ui_info "Etape 9/12" "Configuration du firewall"
 
 # NAT pour le trafic VPN vers LAN/DMZ
 iptables -t nat -A POSTROUTING -s 172.30.1.0/24 -o $ETH_DMZ -j MASQUERADE
@@ -253,7 +258,7 @@ echo "✅ Firewall configuré"
 # =========================================
 # [10/12] Démarrage OpenVPN
 # =========================================
-echo "[10/12] Démarrage du service OpenVPN"
+ui_info "Etape 10/12" "Demarrage du service OpenVPN"
 
 # Activer et démarrer le service
 systemctl enable openvpn@server
@@ -270,7 +275,7 @@ echo "✅ Service OpenVPN démarré"
 # =========================================
 # [11/12] Génération Fichiers Clients
 # =========================================
-echo "[11/12] Génération des fichiers de configuration clients"
+ui_info "Etape 11/12" "Generation des fichiers de configuration clients"
 
 # Répertoire pour les configs clients
 mkdir -p /root/openvpn-clients
@@ -332,7 +337,7 @@ echo "✅ Fichiers clients générés dans /root/openvpn-clients/"
 # =========================================
 # [12/12] Tests et Vérifications
 # =========================================
-echo "[12/12] Tests de connectivité"
+ui_info "Etape 12/12" "Tests de connectivite"
 
 # Test interface VPN
 if ip addr show tun0 &> /dev/null; then
@@ -357,38 +362,4 @@ ping -c 2 192.168.10.11 || echo "⚠️  Serveur Mail inaccessible"
 # =========================================
 # Résumé Final
 # =========================================
-echo ""
-echo "========================================="
-echo " ✅ Serveur OpenVPN configuré avec succès !"
-echo "========================================="
-echo ""
-echo "📊 Informations :"
-echo "  • IP DMZ : 192.168.10.12/24"
-echo "  • Passerelle : 192.168.10.254"
-echo "  • Port OpenVPN : 1194/UDP"
-echo "  • Réseau VPN : 172.30.1.0/24"
-echo ""
-echo "🔐 Certificats :"
-echo "  • CA : /etc/openvpn/ca.crt"
-echo "  • Serveur : /etc/openvpn/server.crt"
-echo "  • DH : /etc/openvpn/dh.pem"
-echo ""
-echo "👥 Fichiers clients :"
-echo "  • Client1 : /root/openvpn-clients/client1.ovpn"
-echo "  • Client2 : /root/openvpn-clients/client2.ovpn"
-echo ""
-echo "🌐 Routes poussées aux clients :"
-echo "  • LAN : 192.168.20.0/24"
-echo "  • DMZ : 192.168.10.0/24"
-echo ""
-echo "📝 Commandes utiles :"
-echo "  • Statut : systemctl status openvpn@server"
-echo "  • Logs : tail -f /var/log/openvpn/openvpn.log"
-echo "  • Clients connectés : cat /var/log/openvpn/openvpn-status.log"
-echo ""
-echo "🚀 Pour distribuer les configs clients :"
-echo "  • Copier /root/openvpn-clients/*.ovpn vers les clients"
-echo "  • Installer OpenVPN client sur Windows/Linux/Mac"
-echo "  • Importer le fichier .ovpn"
-echo ""
-echo "========================================="
+ui_msg "Termine" "Serveur OpenVPN configure avec succes.\nIP DMZ : 192.168.10.12/24\nPasserelle : 192.168.10.254\nPort OpenVPN : 1194/UDP\nReseau VPN : 172.30.1.0/24\n\nCertificats :\n- CA : /etc/openvpn/ca.crt\n- Serveur : /etc/openvpn/server.crt\n- DH : /etc/openvpn/dh.pem\n\nFichiers clients :\n- Client1 : /root/openvpn-clients/client1.ovpn\n- Client2 : /root/openvpn-clients/client2.ovpn\n\nRoutes poussees :\n- LAN : 192.168.20.0/24\n- DMZ : 192.168.10.0/24\n\nCommandes utiles :\n- Statut : systemctl status openvpn@server\n- Logs : tail -f /var/log/openvpn/openvpn.log\n- Clients : cat /var/log/openvpn/openvpn-status.log\n\nDistribuer configs :\n- Copier /root/openvpn-clients/*.ovpn\n- Installer OpenVPN client\n- Importer le fichier .ovpn"

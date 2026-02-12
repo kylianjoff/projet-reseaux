@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "${EUID}" -ne 0 ]; then
-    echo "Ce script doit être exécuté en root. (su - puis mot de passe root)" >&2
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+. "$SCRIPT_DIR/common.sh"
+
+require_root
 
 echo "== Installation des dépendances (serveur Debian + BDD) =="
 export DEBIAN_FRONTEND=noninteractive
@@ -23,13 +24,14 @@ apt-get install -y \
     net-tools \
     iproute2 \
     ifupdown \
-    mariadb-server
+    mariadb-server \
+    whiptail
+
+ensure_whiptail
 
 DEFAULT_USER="administrateur"
 
-echo
-read -r -p "Nom de l'utilisateur administrateur (Par défaut : ${DEFAULT_USER}): " USER
-USER="${USER:-$DEFAULT_USER}"
+USER=$(ui_input "Utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
 if id "$USER" >/dev/null 2>&1; then
     usermod -aG sudo "$USER"
@@ -37,15 +39,13 @@ else
     echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
 fi
 
-echo
-echo "== Configuration Réseau (DHCP - LAN) =="
+ui_info "Reseau" "Configuration reseau (DHCP - LAN)"
 if [ -f /etc/network/interfaces ]; then
     cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
 
 DEFAULT_IFACE="enp0s3"
-read -r -p "Nom de l'interface réseau (Par défaut : ${DEFAULT_IFACE}): " IFACE
-IFACE="${IFACE:-$DEFAULT_IFACE}"
+IFACE=$(ui_input "Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
 
 cat > /etc/network/interfaces <<EOF
 auto lo
@@ -55,7 +55,7 @@ auto ${IFACE}
 iface ${IFACE} inet dhcp
 EOF
 
-echo "== Correction du Bind-Address (Ecoute sur 0.0.0.0) =="
+ui_info "MariaDB" "Correction du Bind-Address (Ecoute sur 0.0.0.0)"
 # Cette ligne cherche le bind-address 127.0.0.1 et le remplace par 0.0.0.0
 # pour permettre les connexions depuis le serveur Web en DMZ.
 CONF_FILE="/etc/mysql/mariadb.conf.d/50-server.cnf"
@@ -66,18 +66,12 @@ else
     echo "Fichier de config MariaDB introuvable, vérifiez l'installation." >&2
 fi
 
-echo "== Redémarrage des services =="
+ui_info "Services" "Redemarrage des services"
 systemctl restart networking
 systemctl enable mariadb
 systemctl restart mariadb
 
-echo "== Terminé =="
-echo "Le serveur BDD est prêt."
-echo "NOTE : Le DHCP n'étant pas configuré, le serveur attend une IP."
-echo ""
-read -r -p "Voulez-vous redémarrer le serveur maintenant ? [O/N] : " REBOOT_CHOICE
-REBOOT_CHOICE="${REBOOT_CHOICE:-N}"
-
-if [ "$REBOOT_CHOICE" = "O" ]; then
+ui_msg "Termine" "Le serveur BDD est pret.\nNote: le DHCP n'etant pas configure, le serveur attend une IP."
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70 --defaultno; then
     reboot now
 fi

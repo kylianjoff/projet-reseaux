@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-if [ "${EUID}" -ne 0 ]; then
-	echo "Ce script doit être exécuté en root. (su - puis mot de passe root)" >&2
-	exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+. "$SCRIPT_DIR/common.sh"
+
+require_root
 
 echo "== Installation des dépendances (serveur Debian + DNS) =="
 export DEBIAN_FRONTEND=noninteractive
@@ -25,13 +26,14 @@ apt-get install -y \
 	ifupdown \
 	bind9 \
 	bind9utils \
-	dnsutils
+	dnsutils \
+	whiptail
+
+ensure_whiptail
 
 DEFAULT_USER="administrateur"
 
-echo
-read -r -p "Nom de l'utilisateur administrateur (Par défaut : ${DEFAULT_USER}): " USER
-USER="${USER:-$DEFAULT_USER}"
+USER=$(ui_input "Utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
 if id "$USER" >/dev/null 2>&1; then
 	usermod -aG sudo "$USER"
@@ -41,22 +43,20 @@ fi
 
 DEFAULT_IFACE="enp0s3"
 
-echo
-read -r -p "Nom de l'interface réseau (Par défaut : ${DEFAULT_IFACE}): " IFACE
-IFACE="${IFACE:-$DEFAULT_IFACE}"
-read -r -p "Adresse IP du serveur DNS (ex: 192.168.20.2): " SERVER_IP
-read -r -p "Masque réseau (ex: 255.255.255.0): " NETMASK
-read -r -p "Passerelle (ex: 192.168.20.254): " GATEWAY
-read -r -p "DNS amont (séparés par des virgules, ex: 1.1.1.1,8.8.8.8): " FORWARDERS
-read -r -p "Nom de domaine (ex: lan.local): " DOMAIN_NAME
-read -r -p "Zone reverse (ex: 20.168.192.in-addr.arpa): " REVERSE_ZONE
-read -r -p "Nom d'hôte à créer (ex: srv-dns): " HOSTNAME
-read -r -p "IP de l'hôte (ex: 192.168.20.2): " HOST_IP
+IFACE=$(ui_input "Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
+SERVER_IP=$(ui_input "Adresse IP" "Adresse IP du serveur DNS" "192.168.20.2") || exit 1
+NETMASK=$(ui_input "Reseau" "Masque reseau" "255.255.255.0") || exit 1
+GATEWAY=$(ui_input "Reseau" "Passerelle" "192.168.20.254") || exit 1
+FORWARDERS=$(ui_input "DNS" "DNS amont (separes par des virgules)" "1.1.1.1,8.8.8.8") || exit 1
+DOMAIN_NAME=$(ui_input "Domaine" "Nom de domaine" "lan.local") || exit 1
+REVERSE_ZONE=$(ui_input "Domaine" "Zone reverse" "20.168.192.in-addr.arpa") || exit 1
+HOSTNAME=$(ui_input "Hote" "Nom d'hote a creer" "srv-dns") || exit 1
+HOST_IP=$(ui_input "Hote" "IP de l'hote" "192.168.20.2") || exit 1
 
 FORWARDERS_LIST=$(echo "$FORWARDERS" | tr ',' ';')
 DNS_LIST=$(echo "$SERVER_IP" | tr ',' ' ')
 
-echo "== Configuration IP statique =="
+ui_info "Reseau" "Configuration IP statique"
 if [ -f /etc/network/interfaces ]; then
 	cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
@@ -73,7 +73,7 @@ iface ${IFACE} inet static
 	dns-nameservers ${DNS_LIST}
 EOF
 
-echo "== Configuration Bind9 =="
+ui_info "Bind9" "Configuration Bind9"
 if [ -f /etc/bind/named.conf.options ]; then
 	cp /etc/bind/named.conf.options /etc/bind/named.conf.options.bak.$(date +%s)
 fi
@@ -131,12 +131,9 @@ cat > "/etc/bind/db.${REVERSE_ZONE}" <<EOF
 ${HOST_LAST_OCTET} IN PTR ${HOSTNAME}.${DOMAIN_NAME}.
 EOF
 
-echo "== Redémarrage des services =="
+ui_info "Services" "Redemarrage des services"
 systemctl restart networking
 systemctl enable bind9
 systemctl restart bind9
 
-echo "== Terminé =="
-echo "Test: dig @${SERVER_IP} ${HOSTNAME}.${DOMAIN_NAME}"
-echo "Redémarrez le serveur pour appliquer toutes les configurations: reboot"
-echo ""
+ui_msg "Termine" "Test: dig @${SERVER_IP} ${HOSTNAME}.${DOMAIN_NAME}\nRedemarrez le serveur pour appliquer toutes les configurations."
