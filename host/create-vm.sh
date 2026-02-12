@@ -1,3 +1,4 @@
+#!/bin/bash
 # Supprime le dossier et le .vbox d'une VM si déjà existant
 function remove_existing_vm_dir() {
     local vm_name="$1"
@@ -8,7 +9,7 @@ function remove_existing_vm_dir() {
         rm -rf "$vbox_dir"
     fi
 }
-#!/bin/bash
+
 # Création d'une ISO à partir d'un dossier (nécessite genisoimage ou mkisofs)
 function create_iso_from_folder() {
     local src_folder="$1"
