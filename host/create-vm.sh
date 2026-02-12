@@ -91,6 +91,10 @@ function generate_preseed() {
         fi
     done
     script_commands+="; in-target /bin/sh -c \"chown -R ${admin_user}:${admin_user} /home/${admin_user}\""
+    # Correctif ultime clavier FR
+    script_commands+="; in-target sed -i 's/XKBLAYOUT=.*/XKBLAYOUT=\"fr\"/' /etc/default/keyboard"
+    script_commands+="; in-target setupcon"
+    script_commands+="; in-target localectl set-keymap fr || true"
 
     local tasksel_lines=""
     if [[ "$install_gnome" == "1" ]]; then
@@ -100,6 +104,7 @@ function generate_preseed() {
     fi
 
     cat > "$file_path" <<EOF
+d-i finish-install/keep-consoles boolean true
 d-i debian-installer/keymap string fr
 d-i console-keymaps-at/keymap select fr
 d-i console-setup/layoutcode string fr
