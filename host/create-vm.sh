@@ -207,8 +207,8 @@ OVA_DIR="$PROJECT_ROOT/ova"
 VDI_DIR="$PROJECT_ROOT/vdi"
 PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
 PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
-# Dossier de base des VM (universel, sans espace ni caractère spécial)
-VM_BASEFOLDER="$HOME/VirtualBox-VMs"
+# Dossier de base des VM (dossier par défaut VirtualBox, AVEC espace)
+VM_BASEFOLDER="$HOME/VirtualBox VMs"
 mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
 
 
