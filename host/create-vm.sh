@@ -63,13 +63,32 @@ else
     INTNET_NAME=$( [[ "$NET_CHOICE" == DMZ* ]] && echo "DMZ" || echo "LAN" )
 fi
 
-# Nom de la VM
+
+# Nom de la VM avec gestion de nom unique
 case "$VM_TYPE" in
     "Client") DEFAULT_NAME="client" ;;
     "Serveur") DEFAULT_NAME="srv-$SERVER_ROLE" ;;
     "Pare-feu (OVA)") DEFAULT_NAME="firewall-$FW_ROLE" ;;
 esac
-VM_NAME=$(ask "Nom de la VM" "$DEFAULT_NAME")
+
+function get_unique_vm_name() {
+    local base_name="$1"
+    local name="$base_name"
+    local i=1
+    while "$VBOXMANAGE_PATH" list vms | grep -q '"'"$name"'"'; do
+        name="${base_name}-$i"
+        i=$((i+1))
+    done
+    echo "$name"
+}
+
+read -rp "Nom de la VM [${DEFAULT_NAME}] : " VM_NAME
+VM_NAME="${VM_NAME:-$DEFAULT_NAME}"
+UNIQUE_VM_NAME=$(get_unique_vm_name "$VM_NAME")
+if [[ "$UNIQUE_VM_NAME" != "$VM_NAME" ]]; then
+    echo "Nom déjà utilisé. Nouveau nom: $UNIQUE_VM_NAME"
+    VM_NAME="$UNIQUE_VM_NAME"
+fi
 
 # Mémoire, disque, CPU
 case "$VM_TYPE" in
@@ -116,10 +135,8 @@ echo "VBoxManage trouvé : $VBOXMANAGE_PATH"
 
 # Création de la VM
 
-if "$VBOXMANAGE_PATH" list vms | grep -q '"'$VM_NAME'"'; then
-    echo "Nom déjà utilisé. Ajoutez un suffixe."
-    exit 1
-fi
+
+# (Plus besoin de ce test, la fonction get_unique_vm_name gère le nom unique)
 
 
 if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
