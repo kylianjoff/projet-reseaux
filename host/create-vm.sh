@@ -1,4 +1,12 @@
 #!/bin/bash
+# Génère un preseed de test à la racine du projet pour vérification rapide
+if [[ "$1" == "--gen-preseed" ]]; then
+    TEST_PRESEED_PATH="$PROJECT_ROOT/preseed-test.cfg"
+    generate_preseed "$TEST_PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "testvm" 0 "common.sh"
+    echo "Preseed généré dans $TEST_PRESEED_PATH :"
+    cat "$TEST_PRESEED_PATH"
+    exit 0
+fi
 # Supprime la VM VirtualBox et le dossier si déjà existant
 function remove_existing_vm() {
     local vm_name="$1"
@@ -347,7 +355,6 @@ else
                 --script-template="$PRESEED_PATH" \
                 --user="$ADMIN_USER" \
                 --password="$ADMIN_PASSWORD" \
-                --admin-password="$ROOT_PASSWORD" \
                 --full-user-name="$ADMIN_USER" \
                 --hostname="$VM_NAME.local" \
                 --locale="fr_FR" \
