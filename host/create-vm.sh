@@ -1,3 +1,4 @@
+#!/bin/bash
 # Création d'une ISO à partir d'un dossier (nécessite genisoimage ou mkisofs)
 function create_iso_from_folder() {
     local src_folder="$1"
