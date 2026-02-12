@@ -1,4 +1,11 @@
 #!/bin/bash
+# Vérifie que l'utilisateur courant est dans le groupe vboxusers
+if ! id -nG "$USER" | grep -qw vboxusers; then
+    echo "[ERREUR] L'utilisateur $USER n'est pas dans le groupe vboxusers."
+    echo "Ajoutez-le avec : sudo usermod -aG vboxusers $USER puis reconnectez-vous."
+    exit 1
+fi
+
 # Génère un preseed de test à la racine du projet pour vérification rapide
 if [[ "$1" == "--gen-preseed" ]]; then
     TEST_PRESEED_PATH="$PROJECT_ROOT/preseed-test.cfg"
