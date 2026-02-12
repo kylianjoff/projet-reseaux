@@ -31,7 +31,7 @@ if ! id -nG "$USER" | grep -qw vboxusers; then
 fi
 
 # Génère un preseed de test à la racine du projet pour vérification rapide
-if [[ "$1" == "--gen-preseed" ]]; then
+if [[ $# -ge 1 && "$1" == "--gen-preseed" ]]; then
     TEST_PRESEED_PATH="$PROJECT_ROOT/preseed-test.cfg"
     generate_preseed "$TEST_PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "testvm" 0 "common.sh"
     echo "Preseed généré dans $TEST_PRESEED_PATH :"
