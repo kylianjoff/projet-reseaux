@@ -303,11 +303,17 @@ else
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
-    "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
+
+    # Correction : supprime le contrôleur SATA s'il existe déjà (évite les conflits)
+    if "$VBOXMANAGE_PATH" showvminfo "$VM_NAME" | grep -q 'SATA'; then
+        "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --remove || true
+    fi
+    "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci --portcount 2
     DISK_PATH="$VDI_DIR/$VM_NAME.vdi"
     "$VBOXMANAGE_PATH" createhd --filename "$DISK_PATH" --size $DISK --variant Standard
-    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --type hdd --medium "$DISK_PATH"
-    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --type dvddrive --medium "$ISO_PATH"
+    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK_PATH" --nonrotational on || { echo "Erreur attachement disque dur"; exit 1; }
+    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --device 0 --type dvddrive --medium "$ISO_PATH" || { echo "Erreur attachement ISO (DVD)"; exit 1; }
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --boot1 dvd --boot2 disk --boot3 none --boot4 none
 
     # Installation automatisée (unattended)
     if [[ "$UNATTENDED" == "1" ]]; then
