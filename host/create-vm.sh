@@ -1,3 +1,13 @@
+# Supprime le dossier et le .vbox d'une VM si déjà existant
+function remove_existing_vm_dir() {
+    local vm_name="$1"
+    local basefolder="$2"
+    local vbox_dir="$basefolder/$vm_name"
+    if [ -d "$vbox_dir" ]; then
+        echo "Suppression du dossier existant $vbox_dir (et .vbox)"
+        rm -rf "$vbox_dir"
+    fi
+}
 #!/bin/bash
 # Création d'une ISO à partir d'un dossier (nécessite genisoimage ou mkisofs)
 function create_iso_from_folder() {
@@ -300,6 +310,8 @@ else
     # Génération du preseed
     generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
 
+    # Supprime le .vbox et le dossier si déjà existant
+    remove_existing_vm_dir "$VM_NAME" "$VM_BASEFOLDER"
     "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
