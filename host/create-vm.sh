@@ -1,4 +1,15 @@
 #!/bin/bash
+# Vérifie si la VM est verrouillée avant toute opération
+function check_vm_locked() {
+    local vm_name="$1"
+    if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
+        if "$VBOXMANAGE_PATH" showvminfo "$vm_name" --machinereadable | grep -q 'VMState="locked"'; then
+            echo "[ERREUR] La VM $vm_name est verrouillée (locked). Fermez toutes les interfaces VirtualBox et attendez quelques secondes, ou redémarrez le service vboxdrv."
+            exit 1
+        fi
+    fi
+}
+
 # Vérifie que l'utilisateur courant est dans le groupe vboxusers
 if ! id -nG "$USER" | grep -qw vboxusers; then
     echo "[ERREUR] L'utilisateur $USER n'est pas dans le groupe vboxusers."
@@ -333,6 +344,8 @@ else
     # Génération du preseed
     generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
 
+    # Vérifie si la VM est verrouillée avant suppression
+    check_vm_locked "$VM_NAME"
     # Supprime la VM VirtualBox et le dossier si déjà existant
     remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
     "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
