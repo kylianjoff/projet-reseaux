@@ -318,9 +318,9 @@ fi
 
 # Mémoire, disque, CPU
 case "$VM_TYPE" in
-    "Client") MEMORY=4096 ; DISK=20480 ; VRAM=128 ;;
-    "Serveur") MEMORY=1024 ; DISK=10240 ; VRAM=64 ;;
-    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ; VRAM=64 ;;
+    "Client") MEMORY=4096 ; DISK=20480 ; VRAM=256 ;;
+    "Serveur") MEMORY=1024 ; DISK=10240 ; VRAM=128 ;;
+    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ; VRAM=128 ;;
 esac
 CPUS=1
 

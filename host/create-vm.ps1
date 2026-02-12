@@ -361,9 +361,9 @@ $memory = switch ($vmTypeChoice) {
 }
 
 $vram = switch ($vmTypeChoice) {
-    "1" { 128 }
-    "2" { 64 }
-    "3" { 64 }
+    "1" { 256 }
+    "2" { 128 }
+    "3" { 128 }
 }
 
 $cpus = 1
