@@ -100,6 +100,24 @@ function generate_preseed() {
     fi
 
     cat > "$file_path" <<EOF
+d-i debian-installer/keymap string fr
+d-i console-keymaps-at/keymap select fr
+d-i console-setup/layoutcode string fr
+d-i console-setup/layout string French
+d-i console-setup/modelcode string pc105
+d-i console-setup/variantcode string oss
+d-i console-setup/optionscode string
+d-i keyboard-configuration/layout string French
+d-i keyboard-configuration/layoutcode string fr
+d-i keyboard-configuration/modelcode string pc105
+d-i keyboard-configuration/variantcode string oss
+d-i keyboard-configuration/optionscode string
+d-i keyboard-configuration/xkb-keymap select fr
+d-i keyboard-configuration/toggle select No toggling
+d-i keyboard-configuration/store_defaults_in_debconf_db boolean true
+d-i keyboard-configuration/unsupported_config_layout boolean true
+d-i keyboard-configuration/unsupported_config_options boolean true
+d-i keyboard-configuration/unsupported_config_variant boolean true
 d-i debian-installer/locale string fr_FR.UTF-8
 d-i debian-installer/language string fr
 d-i debian-installer/country string FR
