@@ -330,6 +330,10 @@ else
     fi
     "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci --portcount 2
     DISK_PATH="$VDI_DIR/$VM_NAME.vdi"
+    if [ -f "$DISK_PATH" ]; then
+        echo "Suppression du disque existant $DISK_PATH"
+        rm -f "$DISK_PATH"
+    fi
     "$VBOXMANAGE_PATH" createhd --filename "$DISK_PATH" --size $DISK --variant Standard
     "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK_PATH" --nonrotational on || { echo "Erreur attachement disque dur"; exit 1; }
     "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --device 0 --type dvddrive --medium "$ISO_PATH" || { echo "Erreur attachement ISO (DVD)"; exit 1; }
