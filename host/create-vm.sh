@@ -323,7 +323,7 @@ else
                 --iso="$ISO_PATH" \
                 --script-template="$PRESEED_PATH" \
                 --user="$ADMIN_USER" \
-                --user-password="$ADMIN_PASSWORD" \
+                --password="$ADMIN_PASSWORD" \
                 --admin-password="$ROOT_PASSWORD" \
                 --full-user-name="$ADMIN_USER" \
                 --hostname="$VM_NAME.local" \
