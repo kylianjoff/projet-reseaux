@@ -433,7 +433,16 @@ if ($vmTypeChoice -eq "3") {
             if ($vmTypeChoice -eq "2") {
                 $scriptFiles += "server-$serverRole.sh"
             } else {
-                $scriptFiles += "client.sh"
+                if ($netChoice -eq "1") {
+                    $scriptFiles += "client-linux-dmz.sh"
+                } else {
+                    if ($netChoice -eq "2") {
+                        $scriptFiles += "client-linux-lan.sh"
+                    }
+                    else {
+                        $scriptFiles += "client.sh"
+                    }
+                }                
             }
 
             $scriptEntries = @()

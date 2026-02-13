@@ -389,7 +389,15 @@ else
     if [[ "$VM_TYPE" == "Serveur" ]]; then
         script_files+=("server-$SERVER_ROLE.sh")
     else
-        script_files+=("client.sh")
+        if [[ "$NET_CHOICE" == DMZ* ]]; then
+            script_files+=("client-linux-dmz.sh")
+        else
+            if [[ "$NET_CHOICE" == LAN* ]]; then
+                script_files+=("client-linux-lan.sh")
+            else
+                script_files+=("client.sh")
+            fi
+        fi
     fi
     install_gnome=0
     [[ "$VM_TYPE" == "Client" ]] && install_gnome=1
