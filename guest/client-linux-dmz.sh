@@ -85,6 +85,6 @@ ui_info "[5/5] Services" "Redemarrage des services"
 systemctl restart networking
 
 ui_msg "Termine" "Redemarrez le client pour appliquer toutes les configurations."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le client maintenant ?" 10 70 --defaultyes; then
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le client maintenant ?" 10 70; then
     reboot now
 fi

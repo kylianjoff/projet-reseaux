@@ -142,6 +142,6 @@ systemctl enable bind9
 systemctl restart bind9
 
 ui_msg "Termine" "Test: dig @${SERVER_IP} ${HOSTNAME}.${DOMAIN_NAME}\nRedemarrez le serveur pour appliquer toutes les configurations."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70 --defaultyes; then
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70; then
     reboot now
 fi

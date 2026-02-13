@@ -124,6 +124,6 @@ systemctl enable isc-dhcp-server
 systemctl restart isc-dhcp-server
 
 ui_msg "Termine" "Verifiez le statut avec: systemctl status isc-dhcp-server\nRedemarrez le serveur pour appliquer toutes les configurations."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70 --defaultyes; then
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70; then
     reboot now
 fi

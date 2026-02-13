@@ -124,6 +124,6 @@ systemctl enable apache2
 systemctl restart apache2
 
 ui_msg "Termine" "Acces: http://${SERVER_IP}/\nRedemarrez le serveur pour appliquer toutes les configurations."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70 --defaultyes; then
+if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70; then
     reboot now
 fi

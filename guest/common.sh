@@ -53,11 +53,11 @@ ui_menu() {
 }
 
 ui_msg() {
-	local title="$1" message="$2"
+	local title="${1:-Message}" message="${2:-}"
 	whiptail --title "$title" --msgbox "$message" 10 70
 }
 
 ui_info() {
-	local title="$1" message="$2"
+	local title="${1:-Info}" message="${2:-}"
 	whiptail --title "$title" --infobox "$message" 10 70
 }
