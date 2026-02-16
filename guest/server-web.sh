@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 require_root
 echo "================================="
-echo " [1/5] Recherche de mises à jour "
+echo " [1/7] Recherche de mises a jour "
 echo "================================="
 export DEBIAN_FRONTEND=noninteractive
 if ! apt-get update -y; then
@@ -16,7 +16,7 @@ if ! apt-get update -y; then
 fi
 
 echo "============================================"
-echo " [2/5] Installation des paquets nécessaires "
+echo " [2/7] Installation des paquets necessaires "
 echo "============================================"
 apt-get install -y \
     sudo \
@@ -30,13 +30,19 @@ apt-get install -y \
     iproute2 \
     ifupdown \
     apache2 \
+    git \
+    rsync \
     whiptail
 
 ensure_whiptail
 
 DEFAULT_USER="administrateur"
+WEB_REPO_URL="https://github.com/kylianjoff/projet-reseaux"
+WEB_REPO_BRANCH="main"
+WEB_REPO_SUBDIR="ressources/srv-web"
+WEB_REPO_DIR="/opt/srv-web-repo"
 
-USER=$(ui_input "[3/5] Réglage utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
+USER=$(ui_input "[3/7] Reglage utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
 if id "$USER" >/dev/null 2>&1; then
     usermod -aG sudo "$USER"
@@ -44,9 +50,9 @@ else
     echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
 fi
 
-ui_info "[4/6] Configuration réseau" "Dans quel reseau se trouve le serveur ?"
+ui_info "[4/7] Configuration reseau" "Dans quel reseau se trouve le serveur ?"
 
-NETWORK_CHOICE=$(ui_menu "[4/6] Configuration réseau" "Dans quel reseau se trouve le serveur ?" "1" \
+NETWORK_CHOICE=$(ui_menu "[4/7] Configuration reseau" "Dans quel reseau se trouve le serveur ?" "1" \
     "DMZ (192.168.10.0/24)" \
     "LAN (192.168.20.0/24)") || exit 1
 
@@ -64,18 +70,18 @@ DEFAULT_IFACE="enp0s3"
 DEFAULT_LAST_OCTET="10"
 DEFAULT_NETMASK="255.255.255.0"
 
-IFACE=$(ui_input "[4/6] Configuration réseau" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
-LAST_OCTET=$(ui_input "[4/6] Configuration réseau" "Dernier octet de l'adresse IP du serveur Web" "$DEFAULT_LAST_OCTET") || exit 1
+IFACE=$(ui_input "[4/7] Configuration reseau" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
+LAST_OCTET=$(ui_input "[4/7] Configuration reseau" "Dernier octet de l'adresse IP du serveur Web" "$DEFAULT_LAST_OCTET") || exit 1
 SERVER_IP="${NETWORK_PREFIX}${LAST_OCTET}"
-NETMASK=$(ui_input "[4/6] Configuration réseau" "Masque reseau" "$DEFAULT_NETMASK") || exit 1
-GATEWAY=$(ui_input "[4/6] Configuration réseau" "Passerelle" "$DEFAULT_GATEWAY") || exit 1
-DNS=$(ui_input "[4/6] Configuration réseau" "Serveurs DNS" "$DEFAULT_DNS") || exit 1
+NETMASK=$(ui_input "[4/7] Configuration reseau" "Masque reseau" "$DEFAULT_NETMASK") || exit 1
+GATEWAY=$(ui_input "[4/7] Configuration reseau" "Passerelle" "$DEFAULT_GATEWAY") || exit 1
+DNS=$(ui_input "[4/7] Configuration reseau" "Serveurs DNS" "$DEFAULT_DNS") || exit 1
 DNS="${DNS:-$DEFAULT_DNS}"
-SERVER_NAME=$(ui_input "[4/6] Configuration réseau" "Nom de domaine (optionnel)" "") || exit 1
+SERVER_NAME=$(ui_input "[4/7] Configuration reseau" "Nom de domaine (optionnel)" "") || exit 1
 
 DNS_LIST=$(echo "$DNS" | tr ',' ' ')
 
-ui_info "[4/6] Configuration réseau" "Configuration IP statique"
+ui_info "[4/7] Configuration reseau" "Configuration IP statique"
 if [ -f /etc/network/interfaces ]; then
     cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
 fi
@@ -92,7 +98,7 @@ iface ${IFACE} inet static
     dns-nameservers ${DNS_LIST}
 EOF
 
-ui_info "[5/6] Configuration du serveur web" "Configuration Apache"
+ui_info "[5/7] Configuration du serveur web" "Configuration Apache"
 cat > /etc/apache2/sites-available/000-default.conf <<EOF
 <VirtualHost *:80>
 $( [ -n "$SERVER_NAME" ] && echo "    ServerName ${SERVER_NAME}" )
@@ -118,7 +124,57 @@ cat > /var/www/html/index.html <<EOF
 </html>
 EOF
 
-ui_info "[6/6] Services" "Redemarrage des services"
+ui_info "[6/7] Deploiement" "Deploiement automatique du site depuis Git"
+
+cat > /usr/local/bin/deploy-web.sh <<EOF
+#!/bin/bash
+set -euo pipefail
+
+REPO_URL="${WEB_REPO_URL}"
+REPO_BRANCH="${WEB_REPO_BRANCH}"
+REPO_SUBDIR="${WEB_REPO_SUBDIR}"
+REPO_DIR="${WEB_REPO_DIR}"
+WEB_ROOT="/var/www/html"
+
+if [ ! -d "${WEB_REPO_DIR}/.git" ]; then
+    git clone --branch "${WEB_REPO_BRANCH}" --depth 1 "${WEB_REPO_URL}" "${WEB_REPO_DIR}"
+else
+    git -C "${WEB_REPO_DIR}" fetch --depth 1 origin "${WEB_REPO_BRANCH}"
+    git -C "${WEB_REPO_DIR}" checkout -f "${WEB_REPO_BRANCH}"
+    git -C "${WEB_REPO_DIR}" reset --hard "origin/${WEB_REPO_BRANCH}"
+fi
+
+SRC_DIR="${WEB_REPO_DIR}/${WEB_REPO_SUBDIR}"
+if [ ! -d "${SRC_DIR}" ]; then
+    echo "Sous-dossier introuvable: ${SRC_DIR}" >&2
+    exit 1
+fi
+
+rsync -a --delete "${SRC_DIR}/" "${WEB_ROOT}/"
+chown -R www-data:www-data "${WEB_ROOT}"
+EOF
+
+chmod +x /usr/local/bin/deploy-web.sh
+/usr/local/bin/deploy-web.sh
+
+cat > /etc/systemd/system/web-deploy.service <<EOF
+[Unit]
+Description=Deploy web content from Git
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/deploy-web.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable web-deploy.service
+
+ui_info "[7/7] Services" "Redemarrage des services"
 systemctl restart networking
 systemctl enable apache2
 systemctl restart apache2
