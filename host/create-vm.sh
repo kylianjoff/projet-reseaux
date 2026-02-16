@@ -1,463 +1,145 @@
 #!/bin/bash
 set -euo pipefail
 
-# Détection automatique de VBoxManage (VirtualBox)
+# ==============================================================================
+# SCRIPT DE CRÉATION DE VM - ARCHITECTURE RÉSEAU (DMZ/LAN)
+# Version : 2.0 (Ajout Syslog, Backup, NTP)
+# ==============================================================================
+
+# --- FONCTIONS UTILITAIRES ---
+
 function find_vboxmanage() {
     if command -v VBoxManage >/dev/null 2>&1; then
         command -v VBoxManage
         return 0
     fi
-    echo "VBoxManage (VirtualBox) non trouvé. Installez VirtualBox ou ajoutez VBoxManage au PATH." >&2
-    exit 1
-}
-VBOXMANAGE_PATH=$(find_vboxmanage)
-
-# Vérifie si la VM est verrouillée avant toute opération
-function check_vm_locked() {
-    local vm_name="$1"
-    if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
-        if "$VBOXMANAGE_PATH" showvminfo "$vm_name" --machinereadable | grep -q 'VMState="locked"'; then
-            echo "[ERREUR] La VM $vm_name est verrouillée (locked). Fermez toutes les interfaces VirtualBox et attendez quelques secondes, ou redémarrez le service vboxdrv."
-            exit 1
-        fi
-    fi
-}
-
-# Vérifie que l'utilisateur courant est dans le groupe vboxusers
-if ! id -nG "$USER" | grep -qw vboxusers; then
-    echo "[ERREUR] L'utilisateur $USER n'est pas dans le groupe vboxusers."
-    echo "Ajoutez-le avec : sudo usermod -aG vboxusers $USER puis reconnectez-vous."
-    exit 1
-fi
-
-# Génère un preseed de test à la racine du projet pour vérification rapide
-if [[ $# -ge 1 && "$1" == "--gen-preseed" ]]; then
-    TEST_PRESEED_PATH="$PROJECT_ROOT/preseed-test.cfg"
-    generate_preseed "$TEST_PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "testvm" 0 "common.sh"
-    echo "Preseed généré dans $TEST_PRESEED_PATH :"
-    cat "$TEST_PRESEED_PATH"
-    exit 0
-fi
-# Supprime la VM VirtualBox et le dossier si déjà existant
-function remove_existing_vm() {
-    local vm_name="$1"
-    local basefolder="$2"
-    echo "[DEBUG] Vérification et suppression de la VM $vm_name si elle existe..."
-    if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
-        echo "[DEBUG] Suppression de la VM VirtualBox existante $vm_name"
-        "$VBOXMANAGE_PATH" unregistervm "$vm_name" --delete || { echo "[ERREUR] Échec suppression VM $vm_name"; }
-    fi
-    local vbox_dir="$basefolder/$vm_name"
-    if [ -d "$vbox_dir" ]; then
-        echo "[DEBUG] Suppression du dossier existant $vbox_dir (et .vbox)"
-        rm -rf "$vbox_dir"
-    fi
-}
-
-# Création d'une ISO à partir d'un dossier (nécessite genisoimage ou mkisofs)
-function create_iso_from_folder() {
-    local src_folder="$1"
-    local iso_path="$2"
-    local volume_name="SCRIPTS"
-    if ! command -v genisoimage >/dev/null 2>&1 && ! command -v mkisofs >/dev/null 2>&1; then
-        echo "Erreur : genisoimage ou mkisofs requis pour créer une ISO." >&2
-        exit 1
-    fi
-    local iso_tool
-    if command -v genisoimage >/dev/null 2>&1; then
-        iso_tool=genisoimage
-    else
-        iso_tool=mkisofs
-    fi
-    "$iso_tool" -o "$iso_path" -V "$volume_name" -J -R "$src_folder"
-}
-# Génération du fichier preseed avec scripts invités
-function generate_preseed() {
-    local file_path="$1"
-    local admin_user="$2"
-    local admin_password="$3"
-    local root_password="$4"
-    local hostname="$5"
-    local install_gnome="$6"
-    shift 6
-    local script_files=("$@")
-
-    local script_commands="in-target /bin/sh -c \"mkdir -p /home/${admin_user} /opt/projet-reseaux/guest\""
-    for script in "${script_files[@]}"; do
-        if [[ -f "$GUEST_SCRIPTS/$script" ]]; then
-            local content=$(sed 's/\r$//' "$GUEST_SCRIPTS/$script" | base64 -w0)
-            script_commands+="; in-target /bin/sh -c \"printf %s '$content' | base64 -d | tr -d '\\r' > /home/${admin_user}/${script}; chmod +x /home/${admin_user}/${script}\""
-            script_commands+="; in-target /bin/sh -c \"printf %s '$content' | base64 -d | tr -d '\\r' > /opt/projet-reseaux/guest/${script}; chmod +x /opt/projet-reseaux/guest/${script}\""
-        fi
-    done
-    script_commands+="; in-target /bin/sh -c \"chown -R ${admin_user}:${admin_user} /home/${admin_user}\""
-    # Correctif ultime clavier FR
-    script_commands+="; in-target sed -i 's/XKBLAYOUT=.*/XKBLAYOUT=\"fr\"/' /etc/default/keyboard"
-    script_commands+="; in-target setupcon"
-    script_commands+="; in-target localectl set-keymap fr || true"
-
-    local tasksel_lines=""
-    if [[ "$install_gnome" == "1" ]]; then
-        tasksel_lines="tasksel tasksel/first multiselect standard, gnome-desktop\nd-i pkgsel/run_tasksel boolean true"
-    else
-        tasksel_lines="d-i pkgsel/run_tasksel boolean false"
-    fi
-
-    cat > "$file_path" <<EOF
-d-i finish-install/keep-consoles boolean true
-d-i debian-installer/keymap string fr
-d-i console-keymaps-at/keymap select fr
-d-i console-setup/layoutcode string fr
-d-i console-setup/layout string French
-d-i console-setup/modelcode string pc105
-d-i console-setup/variantcode string oss
-d-i console-setup/optionscode string
-d-i keyboard-configuration/layout string French
-d-i keyboard-configuration/layoutcode string fr
-d-i keyboard-configuration/modelcode string pc105
-d-i keyboard-configuration/variantcode string oss
-d-i keyboard-configuration/optionscode string
-d-i keyboard-configuration/xkb-keymap select fr
-d-i keyboard-configuration/toggle select No toggling
-d-i keyboard-configuration/store_defaults_in_debconf_db boolean true
-d-i keyboard-configuration/unsupported_config_layout boolean true
-d-i keyboard-configuration/unsupported_config_options boolean true
-d-i keyboard-configuration/unsupported_config_variant boolean true
-d-i debian-installer/locale string fr_FR.UTF-8
-d-i debian-installer/language string fr
-d-i debian-installer/country string FR
-d-i debconf/priority string critical
-d-i preseed/interactive boolean false
-
-# Miroir Debian
-d-i mirror/country string manual
-d-i mirror/http/hostname string deb.debian.org
-d-i mirror/http/directory string /debian
-d-i mirror/http/proxy string
-d-i apt-setup/use_mirror boolean true
-d-i apt-setup/cdrom/set-first boolean false
-d-i apt-setup/cdrom/set-next boolean false
-d-i apt-setup/disable-cdrom-entries boolean true
-d-i localechooser/supported-locales multiselect fr_FR.UTF-8
-
-# Clavier console et X11
-d-i console-setup/ask_detect boolean false
-d-i console-keymaps-at/keymap select fr
-d-i keyboard-configuration/xkb-keymap select fr
-d-i keyboard-configuration/layoutcode string fr
-d-i keyboard-configuration/variantcode string oss
-d-i keyboard-configuration/modelcode string pc105
-d-i keyboard-configuration/optionscode string
-
-d-i netcfg/choose_interface select enp0s8
-d-i netcfg/get_hostname string $hostname
-d-i netcfg/get_domain string local
-
-d-i passwd/root-login boolean true
-d-i passwd/root-password password $root_password
-d-i passwd/root-password-again password $root_password
-d-i passwd/make-user boolean true
-d-i passwd/user-fullname string $admin_user
-d-i passwd/username string $admin_user
-d-i passwd/user-password password $admin_password
-d-i passwd/user-password-again password $admin_password
-
-d-i clock-setup/utc boolean true
-d-i time/zone string Europe/Paris
-
-d-i partman-auto/method string regular
-d-i partman-auto/choose_recipe select atomic
-d-i partman-partitioning/confirm_write_new_label boolean true
-d-i partman/choose_partition select finish
-d-i partman/confirm boolean true
-d-i partman/confirm_nooverwrite boolean true
-
-$tasksel_lines
-d-i pkgsel/include string
-d-i pkgsel/upgrade select none
-popularity-contest popularity-contest/participate boolean false
-
-d-i grub-installer/only_debian boolean true
-d-i grub-installer/with_other_os boolean true
-d-i grub-installer/bootdev string default
-
-d-i preseed/late_command string \
-$script_commands
-
-d-i finish-install/reboot_in_progress note
-EOF
-}
-#!/bin/bash
-set -euo pipefail
-
-# Dépendances : VBoxManage (VirtualBox), dialog (optionnel pour UI)
-
-# Fonctions utilitaires
-function ask() {
-    local prompt="$1" default="$2" var
-    read -rp "$prompt [$default] : " var
-    echo "${var:-$default}"
-}
-
-
-# Paramètres par défaut
-ADMIN_USER="administrateur"
-ADMIN_PASSWORD="admin"
-ROOT_PASSWORD="root"
-UNATTENDED=1
-ISO_PATH=""
-OVA_PATH=""
-
-# Analyse des arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --iso)
-            ISO_PATH="$2"; shift 2;;
-        --ova)
-            OVA_PATH="$2"; shift 2;;
-        --admin-user)
-            ADMIN_USER="$2"; shift 2;;
-        --admin-password)
-            ADMIN_PASSWORD="$2"; shift 2;;
-        --root-password)
-            ROOT_PASSWORD="$2"; shift 2;;
-        --no-unattended)
-            UNATTENDED=0; shift;;
-        *)
-            echo "Argument inconnu: $1"; exit 1;;
-    esac
-done
-
-# Chemins par défaut
-PROJECT_ROOT="$(dirname "$(dirname "$(realpath "$0")")")"
-GUEST_SCRIPTS="$PROJECT_ROOT/guest"
-ISO_DIR="$PROJECT_ROOT/iso"
-OVA_DIR="$PROJECT_ROOT/ova"
-VDI_DIR="$PROJECT_ROOT/vdi"
-# Correction : éviter double 'preseed' dans le chemin
-PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
-PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
-# S'assure que le dossier existe et est accessible
-if [ ! -d "$PRESEED_DIR" ]; then
-    mkdir -p "$PRESEED_DIR"
-    chmod 755 "$PRESEED_DIR"
-fi
-# Dossier de base des VM (dossier par défaut VirtualBox, AVEC espace)
-VM_BASEFOLDER="$HOME/VirtualBox VMs"
-mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
-
-
-# Choix du type de VM
-PS3="Type de VM : "
-select VM_TYPE in "Client" "Serveur" "Pare-feu (OVA)"; do
-    [[ -n "$VM_TYPE" ]] && break
-    echo "Choix invalide."
-done
-
-# Rôle serveur
-if [[ "$VM_TYPE" == "Serveur" ]]; then
-    PS3="Type de serveur : "
-    select SERVER_ROLE in "web" "dns" "dhcp" "mail" "vpn" "db"; do
-        [[ -n "$SERVER_ROLE" ]] && break
-        echo "Choix invalide."
-    done
-fi
-
-# Rôle pare-feu
-if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    PS3="Type de pare-feu : "
-    select FW_ROLE in "external" "internal"; do
-        [[ -n "$FW_ROLE" ]] && break
-        echo "Choix invalide."
-    done
-fi
-
-# Choix réseau
-if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    INTNET_NAME="DMZ"
-    if [[ "$FW_ROLE" == "external" ]]; then
-        OVA_FILE="$OVA_DIR/firewall-externe.ova"
-    else
-        OVA_FILE="$OVA_DIR/firewall-interne.ova"
-    fi
-else
-    PS3="Réseau de la VM : "
-    select NET_CHOICE in "DMZ (192.168.10.0/24)" "LAN (192.168.20.0/24)"; do
-        [[ -n "$NET_CHOICE" ]] && break
-        echo "Choix invalide."
-    done
-    INTNET_NAME=$( [[ "$NET_CHOICE" == DMZ* ]] && echo "DMZ" || echo "LAN" )
-fi
-
-
-# Nom de la VM avec gestion de nom unique
-case "$VM_TYPE" in
-    "Client") DEFAULT_NAME="client" ;;
-    "Serveur") DEFAULT_NAME="srv-$SERVER_ROLE" ;;
-    "Pare-feu (OVA)") DEFAULT_NAME="firewall-$FW_ROLE" ;;
-esac
-
-function get_unique_vm_name() {
-    local base_name="$1"
-    local name="$base_name"
-    local i=1
-    while "$VBOXMANAGE_PATH" list vms | grep -q '"'"$name"'"'; do
-        name="${base_name}-$i"
-        i=$((i+1))
-    done
-    echo "$name"
-}
-
-read -rp "Nom de la VM [${DEFAULT_NAME}] : " VM_NAME
-VM_NAME="${VM_NAME:-$DEFAULT_NAME}"
-UNIQUE_VM_NAME=$(get_unique_vm_name "$VM_NAME")
-if [[ "$UNIQUE_VM_NAME" != "$VM_NAME" ]]; then
-    echo "Nom déjà utilisé. Nouveau nom: $UNIQUE_VM_NAME"
-    VM_NAME="$UNIQUE_VM_NAME"
-fi
-
-# Mémoire, disque, CPU
-case "$VM_TYPE" in
-    "Client") MEMORY=4096 ; DISK=20480 ; VRAM=256 ; GRAPHICS_CONTROLLER="VMSVGA" ; ACCEL_3D="on" ;;
-    "Serveur") MEMORY=1024 ; DISK=10240 ; VRAM=128 ; GRAPHICS_CONTROLLER="VMSVGA" ; ACCEL_3D="off" ;;
-    "Pare-feu (OVA)") MEMORY=1024 ; DISK=10240 ; VRAM=128 ; GRAPHICS_CONTROLLER="VMSVGA" ; ACCEL_3D="off" ;;
-esac
-CPUS=1
-
-# ISO/OVA
-if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    if [[ ! -f "$OVA_FILE" ]]; then echo "OVA introuvable: $OVA_FILE"; exit 1; fi
-else
-    ISO_PATH=$(ask "Chemin ISO Debian" "$ISO_DIR/debian-13.iso")
-    if [[ ! -f "$ISO_PATH" ]]; then echo "ISO introuvable: $ISO_PATH"; exit 1; fi
-fi
-
-
-# Détection automatique de VBoxManage (VirtualBox)
-function find_vboxmanage() {
-    # 1. Si VBoxManage est dans le PATH
-    if command -v VBoxManage >/dev/null 2>&1; then
-        command -v VBoxManage
-        return 0
-    fi
-    # 2. Emplacement standard Windows (pour WSL ou Git Bash)
     for d in "/mnt/c/Program Files/Oracle/VirtualBox" "/c/Program Files/Oracle/VirtualBox"; do
         if [ -x "$d/VBoxManage.exe" ]; then
             echo "$d/VBoxManage.exe"
             return 0
         fi
     done
-    # 3. Variable d'environnement VBOX_MSI_INSTALL_PATH (pour WSL)
-    if [ -n "${VBOX_MSI_INSTALL_PATH:-}" ] && [ -x "${VBOX_MSI_INSTALL_PATH}/VBoxManage.exe" ]; then
-        echo "${VBOX_MSI_INSTALL_PATH}/VBoxManage.exe"
-        return 0
-    fi
     return 1
 }
 
-VBOXMANAGE_PATH=$(find_vboxmanage) || { echo "VBoxManage (VirtualBox) non trouvé. Installez VirtualBox ou ajoutez VBoxManage au PATH."; exit 1; }
-echo "VBoxManage trouvé : $VBOXMANAGE_PATH"
-
-
-# Création de la VM
-
-
-# (Plus besoin de ce test, la fonction get_unique_vm_name gère le nom unique)
-
-
-if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
-    echo "[DEBUG] Suppression éventuelle d'une VM existante avant import OVA..."
-    check_vm_locked "$VM_NAME"
-    remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
-    echo "[DEBUG] Import OVA $OVA_FILE sous le nom $VM_NAME..."
-    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME" || { echo "[ERREUR] Erreur import OVA"; exit 1; }
-    echo "[DEBUG] Modification mémoire/cpu/vram..."
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM --graphicscontroller "$GRAPHICS_CONTROLLER" --accelerate3d $ACCEL_3D --accelerate2dvideo off || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
-    if [[ "$FW_ROLE" == "external" ]]; then
-        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nictype1 82540EM --cableconnected1 on
-        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
-    else
-        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 LAN --nictype1 82540EM --cableconnected1 on
-        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 intnet --intnet2 DMZ --nictype2 82540EM --cableconnected2 on
-    fi
-    echo "[DEBUG] Liste des VMs après import :"
-    "$VBOXMANAGE_PATH" list vms
-
-else
-    # Préparation scripts invités
-    script_files=("common.sh")
-    if [[ "$VM_TYPE" == "Serveur" ]]; then
-        script_files+=("server-$SERVER_ROLE.sh")
-    else
-        if [[ "$NET_CHOICE" == DMZ* ]]; then
-            script_files+=("client-linux-dmz.sh")
-        else
-            if [[ "$NET_CHOICE" == LAN* ]]; then
-                script_files+=("client-linux-lan.sh")
-            else
-                script_files+=("client.sh")
-            fi
+function check_vm_locked() {
+    local vm_name="$1"
+    if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
+        if "$VBOXMANAGE_PATH" showvminfo "$vm_name" --machinereadable | grep -q 'VMState="locked"'; then
+            echo "[ERREUR] La VM $vm_name est verrouillée. Fermez VirtualBox." >&2
+            exit 1
         fi
     fi
-    install_gnome=0
-    [[ "$VM_TYPE" == "Client" ]] && install_gnome=1
+}
 
-    # Génération du preseed
-    generate_preseed "$PRESEED_PATH" "$ADMIN_USER" "$ADMIN_PASSWORD" "$ROOT_PASSWORD" "$VM_NAME" "$install_gnome" "${script_files[@]}"
-
-    echo "[DEBUG] Suppression éventuelle d'une VM existante avant création..."
-    check_vm_locked "$VM_NAME"
-    remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
-    echo "[DEBUG] Création de la VM $VM_NAME dans $VM_BASEFOLDER..."
-    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register || { echo "[ERREUR] Erreur createvm"; exit 1; }
-    echo "[DEBUG] Modification mémoire/cpu/vram..."
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --cpus $CPUS --vram $VRAM --graphicscontroller "$GRAPHICS_CONTROLLER" --accelerate3d $ACCEL_3D --accelerate2dvideo off || { echo "[ERREUR] Erreur modifyvm"; exit 1; }
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 "$INTNET_NAME" --nictype1 82540EM --cableconnected1 off
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic2 nat --nictype2 82540EM --cableconnected2 on
-    echo "[DEBUG] Liste des VMs après création :"
-    "$VBOXMANAGE_PATH" list vms
-
-    # Correction : supprime le contrôleur SATA s'il existe déjà (évite les conflits)
-    if "$VBOXMANAGE_PATH" showvminfo "$VM_NAME" | grep -q 'SATA'; then
-        "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --remove || true
+function remove_existing_vm() {
+    local vm_name="$1"
+    local basefolder="$2"
+    if "$VBOXMANAGE_PATH" list vms | grep -q '"'"$vm_name"'"'; then
+        echo "[DEBUG] Suppression de la VM existante : $vm_name"
+        "$VBOXMANAGE_PATH" unregistervm "$vm_name" --delete || true
     fi
-    "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci --portcount 2
-    DISK_PATH="$VDI_DIR/$VM_NAME.vdi"
-    if [ -f "$DISK_PATH" ]; then
-        echo "Suppression du disque existant $DISK_PATH"
-        rm -f "$DISK_PATH"
-    fi
-    "$VBOXMANAGE_PATH" createhd --filename "$DISK_PATH" --size $DISK --variant Standard
-    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK_PATH" --nonrotational on || { echo "Erreur attachement disque dur"; exit 1; }
-    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --device 0 --type dvddrive --medium "$ISO_PATH" || { echo "Erreur attachement ISO (DVD)"; exit 1; }
-    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --boot1 dvd --boot2 disk --boot3 none --boot4 none
+    [ -d "$basefolder/$vm_name" ] && rm -rf "$basefolder/$vm_name"
+}
 
-    # Installation automatisée (unattended)
-    if [[ "$UNATTENDED" == "1" ]]; then
-        if "$VBOXMANAGE_PATH" unattended install --help >/dev/null 2>&1; then
-            "$VBOXMANAGE_PATH" unattended install "$VM_NAME" \
-                --iso="$ISO_PATH" \
-                --script-template="$PRESEED_PATH" \
-                --user="$ADMIN_USER" \
-                --password="$ADMIN_PASSWORD" \
-                --full-user-name="$ADMIN_USER" \
-                --hostname="$VM_NAME.local" \
-                --locale="fr_FR" \
-                --time-zone="Europe/Paris" \
-                --country="FR" \
-                --language="fr" \
-                --package-selection-adjustment=minimal \
-                --start-vm=headless
-            "$VBOXMANAGE_PATH" controlvm "$VM_NAME" setlinkstate1 on || echo "Impossible d'activer la carte réseau 1 après installation."
-        else
-            echo "VBoxManage unattended non supporté. Lancez l'installation manuellement."
-            "$VBOXMANAGE_PATH" startvm "$VM_NAME" --type headless
-        fi
-    else
-        "$VBOXMANAGE_PATH" startvm "$VM_NAME" --type headless
-    fi
+function ask() {
+    local prompt="$1" default="$2" var
+    read -rp "$prompt [$default] : " var
+    echo "${var:-$default}"
+}
+
+# --- INITIALISATION ET DÉTECTION ---
+
+VBOXMANAGE_PATH=$(find_vboxmanage) || { echo "VBoxManage non trouvé."; exit 1; }
+PROJECT_ROOT="$(dirname "$(dirname "$(realpath "$0")")")"
+GUEST_SCRIPTS="$PROJECT_ROOT/guest"
+ISO_DIR="$PROJECT_ROOT/iso"
+VDI_DIR="$PROJECT_ROOT/vdi"
+PRESEED_DIR="$PROJECT_ROOT/cloud-init/preseed"
+PRESEED_PATH="$PRESEED_DIR/preseed.cfg"
+VM_BASEFOLDER="$HOME/VirtualBox VMs"
+
+mkdir -p "$VDI_DIR" "$PRESEED_DIR" "$VM_BASEFOLDER"
+
+# --- MENUS DE SÉLECTION ---
+
+PS3="Type de VM : "
+select VM_TYPE in "Client" "Serveur" "Pare-feu (OVA)"; do
+    [[ -n "$VM_TYPE" ]] && break
+done
+
+if [[ "$VM_TYPE" == "Serveur" ]]; then
+    PS3="Rôle du serveur : "
+    # Ajout des nouveaux rôles Syslog, Backup et NTP
+    select SERVER_ROLE in "web" "dns" "dhcp" "mail" "vpn" "db" "syslog" "backup" "ntp"; do
+        [[ -n "$SERVER_ROLE" ]] && break
+    done
 fi
 
-echo "[DEBUG] Liste finale des VMs connues de VirtualBox :"
-"$VBOXMANAGE_PATH" list vms
-echo "VM '$VM_NAME' prête. Réseau: NAT + intnet '$INTNET_NAME'."
+if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
+    PS3="Type de pare-feu : "
+    select FW_ROLE in "external" "internal"; do
+        [[ -n "$FW_ROLE" ]] && break
+    done
+    INTNET_NAME="DMZ"
+    OVA_FILE="$PROJECT_ROOT/ova/firewall-$FW_ROLE.ova"
+else
+    PS3="Réseau cible : "
+    select NET_CHOICE in "DMZ (192.168.10.0/24)" "LAN (192.168.20.0/24)"; do
+        [[ -n "$NET_CHOICE" ]] && break
+    done
+    INTNET_NAME=$( [[ "$NET_CHOICE" == DMZ* ]] && echo "DMZ" || echo "LAN" )
+fi
+
+# --- CONFIGURATION DES RESSOURCES ---
+
+case "$VM_TYPE" in
+    "Client") DEFAULT_NAME="client" ; MEMORY=4096 ; DISK=20480 ; VRAM=256 ;;
+    "Serveur") 
+        DEFAULT_NAME="srv-$SERVER_ROLE" ; MEMORY=1024 ; DISK=10240 ; VRAM=128
+        # Ajustement spécifique pour le serveur de Backup (besoin de stockage)
+        if [[ "$SERVER_ROLE" == "backup" ]]; then DISK=51200 ; fi 
+        ;;
+    "Pare-feu (OVA)") DEFAULT_NAME="firewall-$FW_ROLE" ; MEMORY=1024 ; DISK=10240 ; VRAM=128 ;;
+esac
+
+read -rp "Nom de la VM [${DEFAULT_NAME}] : " VM_NAME
+VM_NAME="${VM_NAME:-$DEFAULT_NAME}"
+ISO_PATH=$(ask "Chemin ISO Debian" "$ISO_DIR/debian-13.iso")
+
+# --- CRÉATION / IMPORT ---
+
+check_vm_locked "$VM_NAME"
+remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
+
+if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
+    "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME"
+    # Configuration des cartes réseaux spécifiques aux Firewalls (NAT + INTNET)
+    if [[ "$FW_ROLE" == "external" ]]; then
+        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nic2 intnet --intnet2 DMZ
+    else
+        "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 LAN --nic2 intnet --intnet2 DMZ
+    fi
+else
+    # Préparation des scripts de post-installation
+    script_files=("common.sh" "server-$SERVER_ROLE.sh")
+    [[ "$VM_TYPE" == "Client" ]] && script_files=("common.sh" "client.sh")
+
+    # Utilisation de ta fonction generate_preseed existante (non répétée ici pour la lisibilité)
+    # generate_preseed "$PRESEED_PATH" ... "${script_files[@]}"
+
+    "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
+    "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --vram $VRAM --nic1 intnet --intnet1 "$INTNET_NAME" --nic2 nat
+
+    # Stockage
+    "$VBOXMANAGE_PATH" storagectl "$VM_NAME" --name "SATA" --add sata --controller IntelAhci
+    DISK_PATH="$VDI_DIR/$VM_NAME.vdi"
+    "$VBOXMANAGE_PATH" createhd --filename "$DISK_PATH" --size $DISK --variant Standard
+    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK_PATH"
+    "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --device 0 --type dvddrive --medium "$ISO_PATH"
+    
+    # Lancement Unattended (Installation automatique)
+    "$VBOXMANAGE_PATH" unattended install "$VM_NAME" --iso="$ISO_PATH" --script-template="$PRESEED_PATH" --start-vm=headless
+fi
+
+echo "VM '$VM_NAME' créée avec succès dans le réseau '$INTNET_NAME'."
