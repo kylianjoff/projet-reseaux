@@ -19,6 +19,7 @@ fi
 echo "============================================"
 echo " [2/6] Installation des paquets nécessaires "
 echo "============================================"
+# Installation de base + usermod fait partie du package passwd
 apt-get install -y \
     sudo \
     curl \
@@ -31,18 +32,44 @@ apt-get install -y \
     iproute2 \
     ifupdown \
     chrony \
-    whiptail
+    whiptail \
+    passwd \
+    login
+
+# Vérifier que usermod est disponible
+if ! command -v usermod &> /dev/null; then
+    echo "ERREUR: usermod n'est pas disponible même après installation de passwd"
+    echo "Recherche de usermod..."
+    find / -name usermod 2>/dev/null || echo "usermod introuvable"
+    exit 1
+fi
 
 ensure_whiptail
 
+echo "============================================"
+echo " [3/6] Configuration utilisateur "
+echo "============================================"
 DEFAULT_USER="administrateur"
 
+# Saisie du nom d'utilisateur avec whiptail
 USER=$(ui_input "[3/6] Réglage utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
 
+# Vérifier si l'utilisateur existe
 if id "$USER" >/dev/null 2>&1; then
-    usermod -aG sudo "$USER"
+    echo "Ajout de l'utilisateur $USER au groupe sudo..."
+    # Utilisation du chemin absolu pour usermod
+    /usr/sbin/usermod -aG sudo "$USER" || {
+        echo "Erreur lors de l'ajout au groupe sudo, tentative avec chemin relatif..."
+        usermod -aG sudo "$USER"
+    }
 else
-    echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
+    echo "ATTENTION: Utilisateur '$USER' introuvable, création en cours..."
+    # Créer l'utilisateur s'il n'existe pas
+    /usr/sbin/useradd -m -s /bin/bash -G sudo "$USER" || {
+        echo "Erreur lors de la création de l'utilisateur, tentative avec useradd simple..."
+        useradd -m -s /bin/bash "$USER" && /usr/sbin/usermod -aG sudo "$USER"
+    }
+    echo "Définissez le mot de passe pour $USER avec: passwd $USER"
 fi
 
 echo "============================================"
@@ -122,7 +149,11 @@ echo "============================================"
 ui_info "[6/6] Services" "Redémarrage des services réseau et chrony"
 
 # Redémarrer networking
-systemctl restart networking || systemctl restart ifupdown
+if systemctl list-unit-files | grep -q networking; then
+    systemctl restart networking
+else
+    systemctl restart ifupdown
+fi
 
 # Activer et démarrer chrony
 systemctl enable chrony
