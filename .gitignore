@@ -40,3 +40,4 @@ vdi/
 
 # cloud-init
 cloud-init/
+cloud-init/preseed/
