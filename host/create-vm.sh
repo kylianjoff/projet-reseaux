@@ -3,7 +3,6 @@ set -euo pipefail
 
 # ==============================================================================
 # SCRIPT DE CRÉATION DE VM - ARCHITECTURE RÉSEAU (DMZ/LAN)
-# Version : 2.0 (Ajout Syslog, Backup, NTP)
 # ==============================================================================
 
 # --- FONCTIONS UTILITAIRES ---
@@ -39,7 +38,9 @@ function remove_existing_vm() {
         echo "[DEBUG] Suppression de la VM existante : $vm_name"
         "$VBOXMANAGE_PATH" unregistervm "$vm_name" --delete || true
     fi
+    # Nettoyage physique du disque pour éviter l'erreur VERR_ALREADY_EXISTS
     [ -d "$basefolder/$vm_name" ] && rm -rf "$basefolder/$vm_name"
+    [ -f "$VDI_DIR/$vm_name.vdi" ] && rm -f "$VDI_DIR/$vm_name.vdi"
 }
 
 function ask() {
@@ -68,9 +69,9 @@ select VM_TYPE in "Client" "Serveur" "Pare-feu (OVA)"; do
     [[ -n "$VM_TYPE" ]] && break
 done
 
+SERVER_ROLE=""
 if [[ "$VM_TYPE" == "Serveur" ]]; then
     PS3="Rôle du serveur : "
-    # Ajout des nouveaux rôles Syslog, Backup et NTP
     select SERVER_ROLE in "web" "dns" "dhcp" "mail" "vpn" "db" "syslog" "backup" "ntp"; do
         [[ -n "$SERVER_ROLE" ]] && break
     done
@@ -97,7 +98,6 @@ case "$VM_TYPE" in
     "Client") DEFAULT_NAME="client" ; MEMORY=4096 ; DISK=20480 ; VRAM=256 ;;
     "Serveur") 
         DEFAULT_NAME="srv-$SERVER_ROLE" ; MEMORY=1024 ; DISK=10240 ; VRAM=128
-        # Ajustement spécifique pour le serveur de Backup (besoin de stockage)
         if [[ "$SERVER_ROLE" == "backup" ]]; then DISK=51200 ; fi 
         ;;
     "Pare-feu (OVA)") DEFAULT_NAME="firewall-$FW_ROLE" ; MEMORY=1024 ; DISK=10240 ; VRAM=128 ;;
@@ -114,19 +114,30 @@ remove_existing_vm "$VM_NAME" "$VM_BASEFOLDER"
 
 if [[ "$VM_TYPE" == "Pare-feu (OVA)" ]]; then
     "$VBOXMANAGE_PATH" import "$OVA_FILE" --vsys 0 --vmname "$VM_NAME"
-    # Configuration des cartes réseaux spécifiques aux Firewalls (NAT + INTNET)
     if [[ "$FW_ROLE" == "external" ]]; then
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 nat --nic2 intnet --intnet2 DMZ
     else
         "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --nic1 intnet --intnet1 LAN --nic2 intnet --intnet2 DMZ
     fi
 else
-    # Préparation des scripts de post-installation
-    script_files=("common.sh" "server-$SERVER_ROLE.sh")
-    [[ "$VM_TYPE" == "Client" ]] && script_files=("common.sh" "client.sh")
+    # --- LOGIQUE D'INJECTION DES SCRIPTS ---
+    # On initialise avec le script commun
+    script_files=("common.sh")
+    
+    if [[ "$VM_TYPE" == "Serveur" ]]; then
+        # On vérifie si le script spécifique au rôle existe
+        if [ -f "$GUEST_SCRIPTS/server-$SERVER_ROLE.sh" ]; then
+            script_files+=("server-$SERVER_ROLE.sh")
+        else
+            echo "[ATTENTION] Script server-$SERVER_ROLE.sh introuvable dans $GUEST_SCRIPTS"
+        fi
+    elif [[ "$VM_TYPE" == "Client" ]]; then
+        script_files+=("client.sh")
+    fi
 
-    # Utilisation de ta fonction generate_preseed existante (non répétée ici pour la lisibilité)
-    # generate_preseed "$PRESEED_PATH" ... "${script_files[@]}"
+    # Ici, tu dois appeler ta fonction generate_preseed qui va lire ces fichiers 
+    # et les encoder en Base64 dans le fichier preseed.cfg
+    # generate_preseed "$PRESEED_PATH" "admin" "pass" "rootpass" "$VM_NAME" 0 "${script_files[@]}"
 
     "$VBOXMANAGE_PATH" createvm --name "$VM_NAME" --ostype Debian_64 --basefolder "$VM_BASEFOLDER" --register
     "$VBOXMANAGE_PATH" modifyvm "$VM_NAME" --memory $MEMORY --vram $VRAM --nic1 intnet --intnet1 "$INTNET_NAME" --nic2 nat
@@ -138,8 +149,9 @@ else
     "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 0 --device 0 --type hdd --medium "$DISK_PATH"
     "$VBOXMANAGE_PATH" storageattach "$VM_NAME" --storagectl "SATA" --port 1 --device 0 --type dvddrive --medium "$ISO_PATH"
     
-    # Lancement Unattended (Installation automatique)
+    # Lancement Unattended
     "$VBOXMANAGE_PATH" unattended install "$VM_NAME" --iso="$ISO_PATH" --script-template="$PRESEED_PATH" --start-vm=headless
 fi
 
 echo "VM '$VM_NAME' créée avec succès dans le réseau '$INTNET_NAME'."
+echo "Scripts inclus : ${script_files[*]}"
