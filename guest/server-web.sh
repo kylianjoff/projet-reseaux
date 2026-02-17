@@ -136,22 +136,22 @@ REPO_SUBDIR="${WEB_REPO_SUBDIR}"
 REPO_DIR="${WEB_REPO_DIR}"
 WEB_ROOT="/var/www/html"
 
-if [ ! -d "${WEB_REPO_DIR}/.git" ]; then
-    git clone --branch "${WEB_REPO_BRANCH}" --depth 1 "${WEB_REPO_URL}" "${WEB_REPO_DIR}"
+if [ ! -d "\${REPO_DIR}/.git" ]; then
+    git clone --branch "\${REPO_BRANCH}" --depth 1 "\${REPO_URL}" "\${REPO_DIR}"
 else
-    git -C "${WEB_REPO_DIR}" fetch --depth 1 origin "${WEB_REPO_BRANCH}"
-    git -C "${WEB_REPO_DIR}" checkout -f "${WEB_REPO_BRANCH}"
-    git -C "${WEB_REPO_DIR}" reset --hard "origin/${WEB_REPO_BRANCH}"
+    git -C "\${REPO_DIR}" fetch --depth 1 origin "\${REPO_BRANCH}"
+    git -C "\${REPO_DIR}" checkout -f "\${REPO_BRANCH}"
+    git -C "\${REPO_DIR}" reset --hard "origin/\${REPO_BRANCH}"
 fi
 
-SRC_DIR="${WEB_REPO_DIR}/${WEB_REPO_SUBDIR}"
-if [ ! -d "${SRC_DIR}" ]; then
-    echo "Sous-dossier introuvable: ${SRC_DIR}" >&2
+SRC_DIR="\${REPO_DIR}/\${REPO_SUBDIR}"
+if [ ! -d "\${SRC_DIR}" ]; then
+    echo "Sous-dossier introuvable: \${SRC_DIR}" >&2
     exit 1
 fi
 
-rsync -a --delete "${SRC_DIR}/" "${WEB_ROOT}/"
-chown -R www-data:www-data "${WEB_ROOT}"
+rsync -a --delete "\${SRC_DIR}/" "\${WEB_ROOT}/"
+chown -R www-data:www-data "\${WEB_ROOT}"
 EOF
 
 chmod +x /usr/local/bin/deploy-web.sh
