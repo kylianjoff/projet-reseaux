@@ -1,30 +1,25 @@
 #!/bin/bash
-# Configuration du serveur NTP pour le projet réseau ISIMA
-# Rôle : Serveur de temps central pour LAN et DMZ
-# IP : 192.168.20.13
+set -euo pipefail
 
-# 1. Vérification des droits root
+# Vérification des droits root
 if [ "$EUID" -ne 0 ]; then
-    echo "ERREUR : Ce script doit être exécuté avec sudo (sudo ./server_ntp.sh)"
+    echo "ERREUR : sudo requis"
     exit 1
 fi
 
-# Détection automatique de l'interface réseau principale
-IFACE=$(ip route | grep default | awk '{print $5}')
-
+# Interface principale
+IFACE=$(ip route | awk '/default/ {print $5}')
 if [ -z "$IFACE" ]; then
-    echo "ERREUR : Impossible de détecter l'interface réseau."
+    echo "ERREUR : impossible de détecter l'interface"
     exit 1
 fi
+echo "Interface détectée : $IFACE"
 
-echo "Interface réseau détectée : $IFACE"
+# Fuseau horaire
+ln -sf /usr/share/zoneinfo/Europe/Paris /etc/localtime
+echo "Fuseau horaire : Europe/Paris"
 
-echo "== Configuration du fuseau horaire (France) =="
-rm -f /etc/localtime
-ln -s /usr/share/zoneinfo/Europe/Paris /etc/localtime
-echo "Fuseau horaire réglé sur Europe/Paris."
-
-echo "== Configuration Réseau (IP Statique) =="
+# IP statique
 cat > /etc/network/interfaces <<EOF
 auto lo
 iface lo inet loopback
@@ -37,17 +32,32 @@ iface $IFACE inet static
     dns-nameservers 1.1.1.1 8.8.8.8
 EOF
 
-echo "== Installation et Configuration de Chrony (NTP) =="
+# Redémarrage réseau fiable
+if command -v ifdown >/dev/null 2>&1 && command -v ifup >/dev/null 2>&1; then
+    ifdown $IFACE || true
+    ifup $IFACE
+else
+    systemctl restart networking || true
+fi
+
+# Attente pour que l'interface soit UP
+sleep 5
+
+# Installation Chrony
 apt-get update
 apt-get install -y chrony
 
+# Création des dossiers requis
+mkdir -p /var/log/chrony
+touch /etc/chrony/chrony.keys
+chown chrony:chrony /var/log/chrony /etc/chrony/chrony.keys || true
+
+# Configuration Chrony
 cat > /etc/chrony/chrony.conf <<EOF
-# Serveurs de temps sources (Pool France)
 pool fr.pool.ntp.org iburst
 
-# Autoriser les réseaux du projet
-allow 192.168.20.0/24   # LAN
-allow 192.168.10.0/24   # DMZ
+allow 192.168.20.0/24
+allow 192.168.10.0/24
 
 keyfile /etc/chrony/chrony.keys
 driftfile /var/lib/chrony/chrony.drift
@@ -57,8 +67,8 @@ rtcsync
 makestep 1 3
 EOF
 
-echo "== Redémarrage des services =="
-systemctl restart networking || service networking restart
+# Redémarrage service
+systemctl daemon-reload
 if systemctl list-units --type=service | grep -q chrony.service; then
     systemctl restart chrony
     systemctl enable chrony
@@ -66,11 +76,14 @@ elif systemctl list-units --type=service | grep -q chronyd.service; then
     systemctl restart chronyd
     systemctl enable chronyd
 else
-    echo "⚠️ Service Chrony introuvable (chrony / chronyd). Vérifie l'installation."
+    echo " Chrony introuvable"
 fi
-echo "== Vérification du statut Chrony =="
-chronyc sources -v
 
-echo ""
-echo "== Terminé ! Le serveur NTP est prêt sur 192.168.20.13 =="
-echo "== Fait par MED =="
+# Vérification
+sleep 2
+echo "== Statut Chrony =="
+systemctl status chrony --no-pager || systemctl status chronyd --no-pager || true
+echo "== Sources Chrony =="
+chronyc sources -v || true
+
+echo "== Serveur NTP prêt sur 192.168.20.13 =="
