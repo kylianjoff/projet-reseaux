@@ -257,7 +257,7 @@ done
 # Rôle serveur
 if [[ "$VM_TYPE" == "Serveur" ]]; then
     PS3="Type de serveur : "
-    select SERVER_ROLE in "web" "dns" "dhcp" "mail" "vpn" "db"; do
+    select SERVER_ROLE in "web" "dns" "dhcp" "mail" "vpn" "db" "syslog" "ntp" "backup"; do
         [[ -n "$SERVER_ROLE" ]] && break
         echo "Choix invalide."
     done
