@@ -5,7 +5,7 @@ export PATH="$PATH:/usr/sbin:/sbin"
 ### PARAMÈTRES RÉSEAU (selon ton plan d’adressage)
 ADMIN_USER="administrateur"
 
-SERVER_IP="192.168.10.14"
+SERVER_IP="192.168.20.14"
 NETMASK="255.255.255.0"
 GATEWAY="192.168.10.254"
 DNS="192.168.10.13"
