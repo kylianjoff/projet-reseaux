@@ -1,6 +1,21 @@
 <?php
+function get_ntp_time($ntp_server = '192.168.20.13', $timeout = 2) {
+    $socket = @fsockopen('udp://' . $ntp_server, 123, $errNo, $errStr, $timeout);
+    if (!$socket) return null;
+    $msg = str_repeat("\0", 48);
+    $msg[0] = chr(0x1B);
+    fwrite($socket, $msg);
+    stream_set_timeout($socket, $timeout);
+    $response = fread($socket, 48);
+    fclose($socket);
+    if (strlen($response) < 48) return null;
+    $data = unpack('N12', $response);
+    $timestamp = $data[9] - 2208988800; // NTP to Unix epoch
+    return gmdate("H:i:s", $timestamp);
+}
+
 $pageTitle = "Console MySQL";
-$currentTime = date("H:i:s");
+$currentTime = get_ntp_time() ?? date("H:i:s");
 
 $defaults = [
     "host" => "192.168.20.12",
