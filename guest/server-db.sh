@@ -1,77 +1,62 @@
 #!/bin/bash
 set -euo pipefail
+export PATH="$PATH:/usr/sbin:/sbin"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
-. "$SCRIPT_DIR/common.sh"
+### PARAMÈTRES RÉSEAU (selon ton plan d’adressage)
+ADMIN_USER="administrateur"
+SERVER_IP="192.168.20.12"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.10.254"
+DNS="192.168.10.13"
+IFACE="enp0s3"
 
-require_root
+# Vérification root
+[ "$EUID" -eq 0 ] || { echo "Ce script doit être lancé en root"; exit 1; }
 
-echo "== Installation des dépendances (serveur Debian + BDD) =="
+echo "== Installation des dépendances =="
 export DEBIAN_FRONTEND=noninteractive
-if ! apt-get update -y; then
-    echo "Mise à jour échouée, tentative avec --allow-releaseinfo-change..."
-    apt-get update -y --allow-releaseinfo-change
-fi
-apt-get install -y \
-    sudo \
-    curl \
-    nano \
-    vim \
-    traceroute \
-    iputils-ping \
-    ca-certificates \
-    net-tools \
-    iproute2 \
-    ifupdown \
-    mariadb-server \
-    whiptail
+apt-get update -y || apt-get update -y --allow-releaseinfo-change
+apt-get install -y sudo curl nano vim traceroute iputils-ping ca-certificates \
+                   net-tools iproute2 ifupdown mariadb-server whiptail || true
 
-ensure_whiptail
+# Création/utilisateur admin
+id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo "$ADMIN_USER"
+usermod -aG sudo "$ADMIN_USER" || true
 
-DEFAULT_USER="administrateur"
+echo "== Configuration réseau statique =="
+# Backup de l'ancienne configuration
+cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
 
-USER=$(ui_input "Utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
-
-if id "$USER" >/dev/null 2>&1; then
-    usermod -aG sudo "$USER"
-else
-    echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
-fi
-
-ui_info "Reseau" "Configuration reseau (DHCP - LAN)"
-if [ -f /etc/network/interfaces ]; then
-    cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
-fi
-
-DEFAULT_IFACE="enp0s3"
-IFACE=$(ui_input "Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
-
+# Configuration statique
 cat > /etc/network/interfaces <<EOF
 auto lo
 iface lo inet loopback
 
 auto ${IFACE}
-iface ${IFACE} inet dhcp
+iface ${IFACE} inet static
+    address ${SERVER_IP}
+    netmask ${NETMASK}
+    gateway ${GATEWAY}
+    dns-nameservers ${DNS}
 EOF
 
-ui_info "MariaDB" "Correction du Bind-Address (Ecoute sur 0.0.0.0)"
-# Cette ligne cherche le bind-address 127.0.0.1 et le remplace par 0.0.0.0
-# pour permettre les connexions depuis le serveur Web en DMZ.
+# Appliquer la configuration
+ifdown ${IFACE} 2>/dev/null || true
+ifup ${IFACE} || true
+echo "Adresse IP statique appliquée à ${IFACE} : ${SERVER_IP}"
+
+# Vérification réseau
+ip addr show ${IFACE}
+ping -c 2 ${GATEWAY} || echo "Attention : la passerelle n'est pas joignable"
+
+echo "== Configuration MariaDB =="
 CONF_FILE="/etc/mysql/mariadb.conf.d/50-server.cnf"
 if [ -f "$CONF_FILE" ]; then
-    sed -i 's/^bind-address\s*=\s*127.0.0.1/bind-address            = 0.0.0.0/' "$CONF_FILE"
-    echo "Configuration mise à jour dans $CONF_FILE"
-else
-    echo "Fichier de config MariaDB introuvable, vérifiez l'installation." >&2
+    sed -i 's/^bind-address\s*=\s*127.0.0.1/bind-address = 0.0.0.0/' "$CONF_FILE"
+    echo "MariaDB configurée pour écouter sur 0.0.0.0"
 fi
 
-ui_info "Services" "Redemarrage des services"
-systemctl restart networking
 systemctl enable mariadb
 systemctl restart mariadb
 
-ui_msg "Termine" "Le serveur BDD est pret.\nNote: le DHCP n'etant pas configure, le serveur attend une IP."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70 --defaultno; then
-    reboot now
-fi
+echo "== Script terminé : serveur prêt =="
