@@ -296,7 +296,10 @@ if ($vmTypeChoice -eq "2") {
     Write-Host "4) MAIL"
     Write-Host "5) VPN"
     Write-Host "6) BDD"
-    $roleChoice = Read-Choice "Type de serveur" @("1", "2", "3", "4", "5", "6")
+    Write-Host "7) SYSLOG"
+    Write-Host "8) NTP"
+    Write-Host "9) BACKUP"
+    $roleChoice = Read-Choice "Type de serveur" @("1", "2", "3", "4", "5", "6", "7", "8", "9")
     $serverRole = switch ($roleChoice) {
         "1" { "web" }
         "2" { "dns" }
@@ -304,6 +307,9 @@ if ($vmTypeChoice -eq "2") {
         "4" { "mail" }
         "5" { "vpn" }
         "6" { "db" }
+        "7" { "syslog" }
+        "8" { "ntp" }
+        "9" { "backup" }
     }
 }
 

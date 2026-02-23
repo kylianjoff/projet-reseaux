@@ -1,84 +1,40 @@
 #!/bin/bash
 set -euo pipefail
+export PATH="$PATH:/usr/sbin:/sbin"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
-. "$SCRIPT_DIR/common.sh"
+### PARAMÈTRES PROJET (PLAN D’ADRESSAGE)
+ADMIN_USER="administrateur"
 
-require_root
-echo "================================="
-echo " [1/5] Recherche de mises à jour "
-echo "================================="
+SERVER_IP="192.168.10.10"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.10.254"
+DNS="192.168.10.13"
+
+WEB_REPO_URL="https://github.com/kylianjoff/projet-reseaux"
+WEB_REPO_BRANCH="main"
+WEB_REPO_SUBDIR="ressources/srv-web"
+WEB_REPO_DIR="/opt/srv-web-repo"
+
+### ROOT CHECK
+[ "$EUID" -eq 0 ] || { echo "Lancer en root"; exit 1; }
+
+### DETECTION INTERFACE
+IFACE=$(ip route | awk '/default/ {print $5; exit}')
+
+echo "[1/7] Mise à jour"
 export DEBIAN_FRONTEND=noninteractive
-if ! apt-get update -y; then
-    echo "Mise à jour échouée, tentative avec --allow-releaseinfo-change..."
-    apt-get update -y --allow-releaseinfo-change
-fi
+apt-get update -y || apt-get update -y --allow-releaseinfo-change
 
-echo "============================================"
-echo " [2/5] Installation des paquets nécessaires "
-echo "============================================"
+echo "[2/7] Installation paquets"
 apt-get install -y \
-    sudo \
-    curl \
-    nano \
-    vim \
-    traceroute \
-    iputils-ping \
-    ca-certificates \
-    net-tools \
-    iproute2 \
-    ifupdown \
-    apache2 \
-    whiptail
+    sudo curl nano vim traceroute iputils-ping ca-certificates \
+    net-tools iproute2 ifupdown apache2 git rsync
 
-ensure_whiptail
+id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true
 
-DEFAULT_USER="administrateur"
+echo "[3/7] Configuration réseau statique ($IFACE)"
 
-USER=$(ui_input "[3/5] Réglage utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
-
-if id "$USER" >/dev/null 2>&1; then
-    usermod -aG sudo "$USER"
-else
-    echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
-fi
-
-ui_info "[4/6] Configuration réseau" "Dans quel reseau se trouve le serveur ?"
-
-NETWORK_CHOICE=$(ui_menu "[4/6] Configuration réseau" "Dans quel reseau se trouve le serveur ?" "1" \
-    "DMZ (192.168.10.0/24)" \
-    "LAN (192.168.20.0/24)") || exit 1
-
-if [ "$NETWORK_CHOICE" = "1" ]; then
-    NETWORK_PREFIX="192.168.10."
-    DEFAULT_GATEWAY="192.168.10.254"
-    DEFAULT_DNS="192.168.10.13"
-else
-    NETWORK_PREFIX="192.168.20."
-    DEFAULT_GATEWAY="192.168.20.254"
-    DEFAULT_DNS="192.168.20.10"
-fi
-
-DEFAULT_IFACE="enp0s3"
-DEFAULT_LAST_OCTET="10"
-DEFAULT_NETMASK="255.255.255.0"
-
-IFACE=$(ui_input "[4/6] Configuration réseau" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
-LAST_OCTET=$(ui_input "[4/6] Configuration réseau" "Dernier octet de l'adresse IP du serveur Web" "$DEFAULT_LAST_OCTET") || exit 1
-SERVER_IP="${NETWORK_PREFIX}${LAST_OCTET}"
-NETMASK=$(ui_input "[4/6] Configuration réseau" "Masque reseau" "$DEFAULT_NETMASK") || exit 1
-GATEWAY=$(ui_input "[4/6] Configuration réseau" "Passerelle" "$DEFAULT_GATEWAY") || exit 1
-DNS=$(ui_input "[4/6] Configuration réseau" "Serveurs DNS" "$DEFAULT_DNS") || exit 1
-DNS="${DNS:-$DEFAULT_DNS}"
-SERVER_NAME=$(ui_input "[4/6] Configuration réseau" "Nom de domaine (optionnel)" "") || exit 1
-
-DNS_LIST=$(echo "$DNS" | tr ',' ' ')
-
-ui_info "[4/6] Configuration réseau" "Configuration IP statique"
-if [ -f /etc/network/interfaces ]; then
-    cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
-fi
+cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
 
 cat > /etc/network/interfaces <<EOF
 auto lo
@@ -89,13 +45,13 @@ iface ${IFACE} inet static
     address ${SERVER_IP}
     netmask ${NETMASK}
     gateway ${GATEWAY}
-    dns-nameservers ${DNS_LIST}
+    dns-nameservers ${DNS}
 EOF
 
-ui_info "[5/6] Configuration du serveur web" "Configuration Apache"
+echo "[4/7] Configuration Apache"
+
 cat > /etc/apache2/sites-available/000-default.conf <<EOF
 <VirtualHost *:80>
-$( [ -n "$SERVER_NAME" ] && echo "    ServerName ${SERVER_NAME}" )
     ServerAdmin webmaster@localhost
     DocumentRoot /var/www/html
     ErrorLog /var/log/apache2/error.log
@@ -107,23 +63,70 @@ cat > /var/www/html/index.html <<EOF
 <!doctype html>
 <html lang="fr">
 <head>
-    <meta charset="utf-8">
-    <title>Serveur Web</title>
+<meta charset="utf-8">
+<title>Serveur Web DMZ</title>
 </head>
 <body>
-    <h1>Serveur Web opérationnel</h1>
-    <p>Configuré par server-web.sh</p>
-    <p>IP: ${SERVER_IP}</p>
+<h1>Serveur Web DMZ opérationnel</h1>
+<p>IP : ${SERVER_IP}</p>
 </body>
 </html>
 EOF
 
-ui_info "[6/6] Services" "Redemarrage des services"
-systemctl restart networking
+echo "[5/7] Script de déploiement Git"
+
+cat > /usr/local/bin/deploy-web.sh <<EOF
+#!/bin/bash
+set -euo pipefail
+
+REPO_URL="${WEB_REPO_URL}"
+REPO_BRANCH="${WEB_REPO_BRANCH}"
+REPO_SUBDIR="${WEB_REPO_SUBDIR}"
+REPO_DIR="${WEB_REPO_DIR}"
+WEB_ROOT="/var/www/html"
+
+if [ ! -d "\${REPO_DIR}/.git" ]; then
+    git clone --branch "\${REPO_BRANCH}" --depth 1 "\${REPO_URL}" "\${REPO_DIR}"
+else
+    git -C "\${REPO_DIR}" fetch --depth 1 origin "\${REPO_BRANCH}"
+    git -C "\${REPO_DIR}" reset --hard "origin/\${REPO_BRANCH}"
+fi
+
+SRC_DIR="\${REPO_DIR}/\${REPO_SUBDIR}"
+[ -d "\${SRC_DIR}" ] || exit 1
+
+rsync -a --delete "\${SRC_DIR}/" "\${WEB_ROOT}/"
+chown -R www-data:www-data "\${WEB_ROOT}"
+EOF
+
+chmod +x /usr/local/bin/deploy-web.sh
+/usr/local/bin/deploy-web.sh
+
+echo "[6/7] Service systemd de déploiement auto"
+
+cat > /etc/systemd/system/web-deploy.service <<EOF
+[Unit]
+Description=Deploy web content from Git
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/deploy-web.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable web-deploy.service
+
+echo "[7/7] Démarrage services"
 systemctl enable apache2
 systemctl restart apache2
+systemctl restart networking || systemctl restart NetworkManager || true
 
-ui_msg "Termine" "Acces: http://${SERVER_IP}/\nRedemarrez le serveur pour appliquer toutes les configurations."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70; then
-    reboot now
-fi
+echo "-----------------------------------"
+echo "Serveur Web DMZ installé avec succès"
+echo "Accès: http://${SERVER_IP}/"
+echo "-----------------------------------"

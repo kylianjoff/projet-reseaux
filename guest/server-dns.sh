@@ -1,147 +1,85 @@
 #!/bin/bash
 set -euo pipefail
+export PATH="$PATH:/usr/sbin:/sbin"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
-. "$SCRIPT_DIR/common.sh"
+ADMIN_USER="administrateur"
+SERVER_IP="192.168.10.13"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.10.254"
+FORWARDERS="1.1.1.1,8.8.8.8"
+DOMAIN_NAME="dmz.home"
+REVERSE_ZONE="10.168.192.in-addr.arpa"
+HOSTNAME="srv-dns-ext"
+HOST_IP="192.168.10.13"
 
-require_root
-echo "================================="
-echo " [1/6] Recherche de mises à jour "
-echo "================================="
-export DEBIAN_FRONTEND=noninteractive
-if ! apt-get update -y; then
-	echo "Mise à jour échouée, tentative avec --allow-releaseinfo-change..."
-	apt-get update -y --allow-releaseinfo-change
-fi
+[ "$EUID" -eq 0 ] || exit 1
 
-echo "============================================"
-echo " [2/6] Installation des paquets nécessaires "
-echo "============================================"
-apt-get install -y \
-	sudo \
-	curl \
-	nano \
-	vim \
-	traceroute \
-	iputils-ping \
-	ca-certificates \
-	net-tools \
-	iproute2 \
-	ifupdown \
-	bind9 \
-	bind9utils \
-	dnsutils \
-	whiptail
+IFACE=$(ip route | awk '/default/ {print $5; exit}')
 
-ensure_whiptail
+apt-get update -y
+apt-get install -y bind9 bind9utils dnsutils sudo passwd net-tools iproute2
 
-DEFAULT_USER="administrateur"
-
-USER=$(ui_input "[3/6] Réglage utilisateur" "Nom de l'utilisateur administrateur" "$DEFAULT_USER") || exit 1
-
-if id "$USER" >/dev/null 2>&1; then
-	usermod -aG sudo "$USER"
-else
-	echo "Utilisateur '$USER' introuvable, ajout au groupe sudo ignoré." >&2
-fi
-
-DEFAULT_IFACE="enp0s3"
-
-IFACE=$(ui_input "[4/6] Interface" "Nom de l'interface reseau" "$DEFAULT_IFACE") || exit 1
-SERVER_IP=$(ui_input "[4/6] Adresse IP" "Adresse IP du serveur DNS" "192.168.20.2") || exit 1
-NETMASK=$(ui_input "[4/6] Reseau" "Masque reseau" "255.255.255.0") || exit 1
-GATEWAY=$(ui_input "[4/6] Reseau" "Passerelle" "192.168.20.254") || exit 1
-FORWARDERS=$(ui_input "[4/6] DNS" "DNS amont (separes par des virgules)" "1.1.1.1,8.8.8.8") || exit 1
-DOMAIN_NAME=$(ui_input "[4/6] Domaine" "Nom de domaine" "lan.local") || exit 1
-REVERSE_ZONE=$(ui_input "[4/6] Domaine" "Zone reverse" "20.168.192.in-addr.arpa") || exit 1
-HOSTNAME=$(ui_input "[4/6] Hote" "Nom d'hote a creer" "srv-dns") || exit 1
-HOST_IP=$(ui_input "[4/6] Hote" "IP de l'hote" "192.168.20.2") || exit 1
-
-FORWARDERS_LIST=$(echo "$FORWARDERS" | tr ',' ';')
-DNS_LIST=$(echo "$SERVER_IP" | tr ',' ' ')
-
-ui_info "[4/6] Configuration réseau" "Configuration IP statique"
-if [ -f /etc/network/interfaces ]; then
-	cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s)
-fi
+id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true
 
 cat > /etc/network/interfaces <<EOF
 auto lo
 iface lo inet loopback
 
-auto ${IFACE}
-iface ${IFACE} inet static
-	address ${SERVER_IP}
-	netmask ${NETMASK}
-	gateway ${GATEWAY}
-	dns-nameservers ${DNS_LIST}
+auto $IFACE
+iface $IFACE inet static
+ address $SERVER_IP
+ netmask $NETMASK
+ gateway $GATEWAY
+ dns-nameservers $SERVER_IP
 EOF
 
-ui_info "[5/6] Configuration DNS" "Configuration Bind9"
-if [ -f /etc/bind/named.conf.options ]; then
-	cp /etc/bind/named.conf.options /etc/bind/named.conf.options.bak.$(date +%s)
-fi
+FORWARDERS_LIST=$(echo "$FORWARDERS" | tr ',' ';')
 
 cat > /etc/bind/named.conf.options <<EOF
 options {
-	directory "/var/cache/bind";
-	recursion yes;
-	allow-query { any; };
-	forwarders { ${FORWARDERS_LIST}; };
-	dnssec-validation auto;
-	listen-on { any; };
-	listen-on-v6 { any; };
+ directory "/var/cache/bind";
+ recursion yes;
+ allow-query { any; };
+ forwarders { $FORWARDERS_LIST; };
+ dnssec-validation auto;
+ listen-on { any; };
+ listen-on-v6 { any; };
 };
 EOF
 
 cat > /etc/bind/named.conf.local <<EOF
-zone "${DOMAIN_NAME}" {
-	type master;
-	file "/etc/bind/db.${DOMAIN_NAME}";
+zone "$DOMAIN_NAME" {
+ type master;
+ file "/etc/bind/db.$DOMAIN_NAME";
 };
+zone "$REVERSE_ZONE" {
+ type master;
+ file "/etc/bind/db.$REVERSE_ZONE";
+};
+EOF
 
-zone "${REVERSE_ZONE}" {
-	type master;
-	file "/etc/bind/db.${REVERSE_ZONE}";
-};
+cat > /etc/bind/db.$DOMAIN_NAME <<EOF
+\$TTL 604800
+@ IN SOA ns.$DOMAIN_NAME. admin.$DOMAIN_NAME. (
+  $(date +%Y%m%d)01 604800 86400 2419200 604800 )
+@ IN NS ns.$DOMAIN_NAME.
+ns IN A $SERVER_IP
+srv-dns-ext IN A $HOST_IP
 EOF
 
 HOST_LAST_OCTET="${HOST_IP##*.}"
-
-cat > "/etc/bind/db.${DOMAIN_NAME}" <<EOF
-\$TTL	604800
-@   IN  SOA ns.${DOMAIN_NAME}. admin.${DOMAIN_NAME}. (
-		2     ; Serial
-		604800 ; Refresh
-		86400  ; Retry
-		2419200 ; Expire
-		604800 ) ; Negative Cache TTL
-;
-@   IN  NS  ns.${DOMAIN_NAME}.
-ns  IN  A   ${SERVER_IP}
-${HOSTNAME} IN  A   ${HOST_IP}
+cat > /etc/bind/db.$REVERSE_ZONE <<EOF
+\$TTL 604800
+@ IN SOA ns.$DOMAIN_NAME. admin.$DOMAIN_NAME. (
+  $(date +%Y%m%d)01 604800 86400 2419200 604800 )
+@ IN NS ns.$DOMAIN_NAME.
+$HOST_LAST_OCTET IN PTR srv-dns-ext.$DOMAIN_NAME.
 EOF
 
-cat > "/etc/bind/db.${REVERSE_ZONE}" <<EOF
-\$TTL	604800
-@   IN  SOA ns.${DOMAIN_NAME}. admin.${DOMAIN_NAME}. (
-		2     ; Serial
-		604800 ; Refresh
-		86400  ; Retry
-		2419200 ; Expire
-		604800 ) ; Negative Cache TTL
-;
-@   IN  NS  ns.${DOMAIN_NAME}.
-${HOST_LAST_OCTET} IN PTR ${HOSTNAME}.${DOMAIN_NAME}.
-EOF
+named-checkconf
+named-checkzone "$DOMAIN_NAME" "/etc/bind/db.$DOMAIN_NAME"
+named-checkzone "$REVERSE_ZONE" "/etc/bind/db.$REVERSE_ZONE"
 
-ui_info "[6/6] Services" "Redemarrage des services"
-systemctl restart networking
-systemctl enable bind9
-systemctl restart bind9
-
-ui_msg "Termine" "Test: dig @${SERVER_IP} ${HOSTNAME}.${DOMAIN_NAME}\nRedemarrez le serveur pour appliquer toutes les configurations."
-if whiptail --title "Redemarrage" --yesno "Voulez-vous redemarrer le serveur maintenant ?" 10 70; then
-    reboot now
-fi
+systemctl enable named.service || true
+systemctl restart named.service
+systemctl restart networking || true
