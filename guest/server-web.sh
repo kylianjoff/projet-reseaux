@@ -37,15 +37,22 @@ echo "[3/7] Configuration réseau statique ($IFACE)"
 cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
 
 cat > /etc/network/interfaces <<EOF
+auto enp0s3
+auto enp0s8
 auto lo
 iface lo inet loopback
 
-auto ${IFACE}
-iface ${IFACE} inet static
+# Interface DMZ
+auto enp0s3
+iface enp0s3 inet static
     address ${SERVER_IP}
     netmask ${NETMASK}
     gateway ${GATEWAY}
     dns-nameservers ${DNS}
+
+# Interface NAT (laisser non configurée ou décommenter pour DHCP)
+#auto enp0s8
+#iface enp0s8 inet dhcp
 EOF
 
 echo "[4/7] Configuration Apache"
