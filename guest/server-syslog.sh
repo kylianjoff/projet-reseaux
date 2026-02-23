@@ -1,140 +1,118 @@
 #!/bin/bash
-# Configuration du serveur Syslog centralisé (srv-syslog) - 192.168.20.15
+set -euo pipefail
 
-if [ "${EUID}" -ne 0 ]; then
-    echo "ERREUR : Lancez avec sudo"
-    exit 1
-fi
+### PARAMÈTRES RÉSEAU
+ADMIN_USER="administrateur"
+SERVER_IP="192.168.20.15"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.10.254"   # interne, si besoin pour LAN
+DNS="192.168.10.13"        # serveur DNS interne
+NAT_GW="10.0.3.2"          # passerelle NAT pour Internet via enp0s8
 
-echo "== Configuration Réseau (IP Statique) =="
+LAN_IFACE="enp0s3"
+NAT_IFACE="enp0s8"
 
-# Désactiver NetworkManager temporairement s'il est présent
-systemctl stop NetworkManager 2>/dev/null
-systemctl disable NetworkManager 2>/dev/null
+# Vérification root
+[ "$EUID" -eq 0 ] || { echo "ERREUR : lancez avec sudo"; exit 1; }
 
-# Configurer les interfaces réseau
+echo "== Configuration interfaces réseau =="
+
+# Désactiver NetworkManager temporairement si présent
+systemctl stop NetworkManager 2>/dev/null || true
+systemctl disable NetworkManager 2>/dev/null || true
+
+# Backup configuration précédente
+cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
+
+# Configurer LAN statique et NAT DHCP
 cat > /etc/network/interfaces <<EOF
-# Interface loopback
+# Loopback
 auto lo
 iface lo inet loopback
 
-# Interface LAN (192.168.20.0/24) - enp0s3
-auto enp0s3
-iface enp0s3 inet static
-    address 192.168.20.15
-    netmask 255.255.255.0
-    gateway 192.168.20.254
+# LAN
+auto ${LAN_IFACE}
+iface ${LAN_IFACE} inet static
+    address ${SERVER_IP}
+    netmask ${NETMASK}
+    gateway ${GATEWAY}
+    dns-nameservers ${DNS}
 
-# Interface NAT (internet) - enp0s8 (DHCP sans route par défaut)
-auto enp0s8
-iface enp0s8 inet dhcp
-    # Supprimer la route par défaut qui pourrait être ajoutée par DHCP
-    post-up ip route del default via 10.0.3.2 dev enp0s8 2>/dev/null || true
-    # Ne pas ajouter de route par défaut
-    up route del default dev enp0s8 2>/dev/null || true
+# NAT
+auto ${NAT_IFACE}
+iface ${NAT_IFACE} inet dhcp
 EOF
 
-echo "== Redémarrage du réseau =="
-# Remonter les interfaces
-ip addr flush dev enp0s3 2>/dev/null
-ip addr flush dev enp0s8 2>/dev/null
-systemctl restart networking
+# Appliquer configuration réseau
+ip addr flush dev ${LAN_IFACE} 2>/dev/null || true
+ip addr flush dev ${NAT_IFACE} 2>/dev/null || true
+systemctl restart networking || true
 
-# Vérifier et supprimer les routes par défaut superflues
-echo "== Nettoyage des routes =="
-# Supprimer toute route par défaut qui ne passe pas par 192.168.20.254
-while ip route show default | grep -v "192.168.20.254" > /dev/null; do
-    BAD_ROUTE=$(ip route show default | grep -v "192.168.20.254" | head -1)
-    ip route del $BAD_ROUTE 2>/dev/null
-done
+# Nettoyage des routes par défaut
+ip route del default 2>/dev/null || true
 
-# S'assurer que la bonne route par défaut existe
-if ! ip route show default | grep -q "192.168.20.254"; then
-    ip route add default via 192.168.20.254 dev enp0s3
-fi
+# Route par défaut via NAT pour Internet
+ip route add default via ${NAT_GW} dev ${NAT_IFACE}
 
-echo "== Installation et Configuration de Rsyslog =="
+echo "== Installation et configuration Rsyslog =="
 apt-get update && apt-get install -y rsyslog
 
-# Activer la réception des logs via UDP (port 514)
+# Activer réception UDP 514
 sed -i 's/#module(load="imudp")/module(load="imudp")/' /etc/rsyslog.conf
 sed -i 's/#input(type="imudp" port="514")/input(type="imudp" port="514")/' /etc/rsyslog.conf
 
-# Créer un répertoire pour stocker les logs des machines distantes
+# Créer répertoire pour logs distants
 mkdir -p /var/log/remote
-chown syslog:adm /var/log/remote
+chown root:adm /var/log/remote
+chmod 755 /var/log/remote
 
-# Configurer rsyslog pour trier les logs par nom de machine
+# Configuration Rsyslog pour trier logs par hostname et programme
 cat > /etc/rsyslog.d/central.conf <<EOF
-# Template pour logs distants triés par nom de machine et programme
+# Template pour logs distants
 \$template RemoteLogs,"/var/log/remote/%HOSTNAME%/%PROGRAMNAME%.log"
 
-# Rediriger tous les logs vers les templates distants
-*.* ?RemoteLogs
+# Rediriger tous les logs vers le template
+*.* action(type="omfile" dynaFile="RemoteLogs")
 
-# Ne pas écrire les logs distants dans les fichiers locaux
-& ~
+# Ne pas écrire les logs distants localement
+& stop
 EOF
 
-echo "== Redémarrage des services =="
+# Redémarrer Rsyslog
 systemctl restart rsyslog
 
-# Vérifications
-echo "== VÉRIFICATIONS =="
-echo ""
-echo "1. Configuration réseau :"
-ip addr show enp0s3 | grep "inet " || echo "❌ enp0s3 non configurée"
-ip addr show enp0s8 | grep "inet " || echo "⚠ enp0s8 peut être sans IP"
+echo "== Vérifications =="
 
-echo ""
-echo "2. Routes :"
-ip route show
-echo ""
-echo "   ✓ La route par défaut doit être via 192.168.20.254"
+echo "1. Interfaces réseau :"
+ip addr show ${LAN_IFACE} | grep "inet " || echo "❌ LAN non configurée"
+ip addr show ${NAT_IFACE} | grep "inet " || echo "⚠ NAT non configurée"
 
-echo ""
-echo "3. Test connectivité LAN :"
-if ping -c 2 192.168.20.254 &>/dev/null; then
-    echo "   ✅ Ping vers firewall interne (192.168.20.254) OK"
+echo "2. Routes par défaut :"
+ip route
+
+echo "3. Test ping Internet via NAT :"
+if ping -c 2 8.8.8.8 &>/dev/null; then
+    echo "✅ Internet OK"
 else
-    echo "   ❌ Ping vers firewall interne échoué"
+    echo "❌ Pas d'accès Internet"
 fi
 
-echo ""
-echo "4. Service rsyslog :"
+echo "4. Service Rsyslog :"
 if systemctl is-active --quiet rsyslog; then
-    echo "   ✅ rsyslog est actif"
+    echo "✅ Rsyslog actif"
 else
-    echo "   ❌ rsyslog n'est pas actif"
-    systemctl status rsyslog --no-pager | head -5
+    echo "❌ Rsyslog inactif"
+    systemctl status rsyslog --no-pager | head -10
 fi
 
-echo ""
 echo "5. Port UDP 514 :"
 if ss -ulpn | grep -q 514; then
-    echo "   ✅ rsyslog écoute sur le port 514 (UDP)"
+    echo "✅ Rsyslog écoute sur UDP 514"
 else
-    echo "   ❌ rsyslog n'écoute pas sur le port 514"
+    echo "❌ Rsyslog n'écoute pas sur UDP 514"
 fi
 
-echo ""
-echo "6. Test local logger :"
-TEST_MSG="TEST-SYSLOG-$(date +%s)"
-logger "$TEST_MSG"
-sleep 1
-if cat /var/log/syslog | grep -q "$TEST_MSG"; then
-    echo "   ✅ logger fonctionne (message trouvé dans syslog)"
-else
-    echo "   ❌ logger ne fonctionne pas"
-    echo "      Vérifiez /var/log/syslog:"
-    ls -la /var/log/syslog
-fi
-
-echo ""
-echo "== Serveur Syslog prêt sur 192.168.20.15 =="
-echo "   - Interface LAN: enp0s3 (192.168.20.15/24)"
-echo "   - Interface NAT: enp0s8 (DHCP, sans route par défaut)"
-echo "   - Port UDP 514 ouvert pour réception des logs distants"
-echo "   - Logs distants: /var/log/remote/"
-echo ""
-echo "== Fait par MED =="
+echo "== Serveur Syslog centralisé prêt =="
+echo "   - LAN : ${SERVER_IP}/24"
+echo "   - NAT : DHCP (Internet)"
+echo "   - Logs distants : /var/log/remote/"
