@@ -2,13 +2,13 @@
 set -euo pipefail
 export PATH="$PATH:/usr/sbin:/sbin"
 
-### PARAMÈTRES PROJET (PLAN D’ADRESSAGE)
+### PARAMÈTRES PROJET
 ADMIN_USER="administrateur"
-
 SERVER_IP="192.168.10.10"
 NETMASK="255.255.255.0"
 GATEWAY="192.168.10.254"
 DNS="192.168.10.13"
+NTP_SERVER="192.168.10.15" 
 
 WEB_REPO_URL="https://github.com/kylianjoff/projet-reseaux"
 WEB_REPO_BRANCH="main"
@@ -21,42 +21,43 @@ WEB_REPO_DIR="/opt/srv-web-repo"
 ### DETECTION INTERFACE
 IFACE=$(ip route | awk '/default/ {print $5; exit}')
 
-echo "[1/7] Mise à jour"
+echo "[1/8] Mise à jour"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y || apt-get update -y --allow-releaseinfo-change
 
-echo "[2/7] Installation paquets"
+echo "[2/8] Installation paquets (Apache + Git + Chrony)"
 apt-get install -y \
     sudo curl nano vim traceroute iputils-ping ca-certificates \
-    net-tools iproute2 ifupdown apache2 git rsync
+    net-tools iproute2 ifupdown apache2 git rsync chrony
+
+# --- CONFIGURATION NTP (AJOUT) ---
+echo "[3/8] Synchronisation temporelle sur le NTP local"
+cat > /etc/chrony/chrony.conf <<EOF
+server $NTP_SERVER iburst
+driftfile /var/lib/chrony/drift
+makestep 1 3
+EOF
+systemctl restart chrony
+# ---------------------------------
 
 id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true
 
-echo "[3/7] Configuration réseau statique ($IFACE)"
-
+echo "[4/8] Configuration réseau statique sur $IFACE"
 cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
 
 cat > /etc/network/interfaces <<EOF
-auto enp0s3
-auto enp0s8
 auto lo
 iface lo inet loopback
 
-# Interface DMZ
-auto enp0s3
-iface enp0s3 inet static
+auto $IFACE
+iface $IFACE inet static
     address ${SERVER_IP}
     netmask ${NETMASK}
     gateway ${GATEWAY}
     dns-nameservers ${DNS}
-
-# Interface NAT (laisser non configurée ou décommenter pour DHCP)
-#auto enp0s8
-#iface enp0s8 inet dhcp
 EOF
 
-echo "[4/7] Configuration Apache"
-
+echo "[5/8] Configuration Apache"
 cat > /etc/apache2/sites-available/000-default.conf <<EOF
 <VirtualHost *:80>
     ServerAdmin webmaster@localhost
@@ -66,26 +67,10 @@ cat > /etc/apache2/sites-available/000-default.conf <<EOF
 </VirtualHost>
 EOF
 
-cat > /var/www/html/index.html <<EOF
-<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<title>Serveur Web DMZ</title>
-</head>
-<body>
-<h1>Serveur Web DMZ opérationnel</h1>
-<p>IP : ${SERVER_IP}</p>
-</body>
-</html>
-EOF
-
-echo "[5/7] Script de déploiement Git"
-
+echo "[6/8] Script de déploiement Git"
 cat > /usr/local/bin/deploy-web.sh <<EOF
 #!/bin/bash
 set -euo pipefail
-
 REPO_URL="${WEB_REPO_URL}"
 REPO_BRANCH="${WEB_REPO_BRANCH}"
 REPO_SUBDIR="${WEB_REPO_SUBDIR}"
@@ -100,17 +85,17 @@ else
 fi
 
 SRC_DIR="\${REPO_DIR}/\${REPO_SUBDIR}"
-[ -d "\${SRC_DIR}" ] || exit 1
-
-rsync -a --delete "\${SRC_DIR}/" "\${WEB_ROOT}/"
-chown -R www-data:www-data "\${WEB_ROOT}"
+if [ -d "\${SRC_DIR}" ]; then
+    rsync -a --delete "\${SRC_DIR}/" "\${WEB_ROOT}/"
+    chown -R www-data:www-data "\${WEB_ROOT}"
+fi
 EOF
 
 chmod +x /usr/local/bin/deploy-web.sh
-/usr/local/bin/deploy-web.sh
+# On tente un premier déploiement (nécessite un accès internet via le Firewall)
+/usr/local/bin/deploy-web.sh || echo "Warning: Premier déploiement Git échoué (vérifiez l'accès internet)"
 
-echo "[6/7] Service systemd de déploiement auto"
-
+echo "[7/8] Service systemd de déploiement auto"
 cat > /etc/systemd/system/web-deploy.service <<EOF
 [Unit]
 Description=Deploy web content from Git
@@ -128,12 +113,14 @@ EOF
 systemctl daemon-reload
 systemctl enable web-deploy.service
 
-echo "[7/7] Démarrage services"
+echo "[8/8] Démarrage services"
 systemctl enable apache2
 systemctl restart apache2
-systemctl restart networking || systemctl restart NetworkManager || true
+systemctl restart networking || true
 
 echo "-----------------------------------"
 echo "Serveur Web DMZ installé avec succès"
-echo "Accès: http://${SERVER_IP}/"
+echo "IP : ${SERVER_IP}"
+echo "DNS : ${DNS}"
+echo "NTP : ${NTP_SERVER}"
 echo "-----------------------------------"
