@@ -24,16 +24,35 @@ echo "[1/4] Installation des paquets (Bind9 + Chrony)"
 apt-get update -y
 apt-get install -y bind9 bind9utils dnsutils sudo passwd net-tools iproute2 chrony
 
-# --- CONFIGURATION NTP (AJOUT) ---
+
+# --- CONFIGURATION DU CLIENT NTP  ---
 echo "[2/4] Configuration du client NTP"
 cat > /etc/chrony/chrony.conf <<EOF
+# Connexion vers le serveur NTP en DMZ
 server $NTP_SERVER iburst
-driftfile /var/lib/chrony/drift
+
+# Autorise la correction rapide au démarrage (si décalage > 1s sur les 3 premières mesures)
 makestep 1 3
+
+# Synchroniser l'horloge matérielle (RTC) du noyau
+rtcsync
+
+# Fichier de dérive et logs
+driftfile /var/lib/chrony/drift
 logdir /var/log/chrony
+
 EOF
 systemctl restart chrony
+chronyc makestep
 # ---------------------------------
+# --- CONFIGURATION SYSLOG (AJOUT) ---
+echo "[*] Configuration du client Syslog"
+apt-get install -y rsyslog
+cat >> /etc/rsyslog.conf <<EOF
+*.* @192.168.20.15:514
+EOF
+systemctl restart rsyslog
+# -------------------------------
 
 echo "[3/4] Configuration Utilisateur et Réseau"
 id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true

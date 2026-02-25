@@ -46,14 +46,33 @@ echo "[2/9] Mise à jour et installation des paquets"
 apt update -y
 apt install -y postfix dovecot-core dovecot-imapd mailutils chrony whiptail
 
-# --- AJOUT CONFIGURATION NTP ---
-echo "[3/9] Configuration du client NTP"
+# --- CONFIGURATION DU CLIENT NTP  ---
+echo "[2/4] Configuration du client NTP"
 cat > /etc/chrony/chrony.conf <<EOF
+# Connexion vers le serveur NTP en DMZ
 server $NTP_SERVER iburst
-driftfile /var/lib/chrony/drift
+
+# Autorise la correction rapide au démarrage (si décalage > 1s sur les 3 premières mesures)
 makestep 1 3
+
+# Synchroniser l'horloge matérielle (RTC) du noyau
+rtcsync
+
+# Fichier de dérive et logs
+driftfile /var/lib/chrony/drift
+logdir /var/log/chrony
+
 EOF
 systemctl restart chrony
+chronyc makestep
+# ------------------------------------
+# --- CONFIGURATION SYSLOG (AJOUT) ---
+echo "[*] Configuration du client Syslog"
+apt-get install -y rsyslog
+cat >> /etc/rsyslog.conf <<EOF
+*.* @192.168.20.15:514
+EOF
+systemctl restart rsyslog
 # -------------------------------
 
 echo "[4/9] Pré-configuration Postfix"

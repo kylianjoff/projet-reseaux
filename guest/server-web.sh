@@ -38,16 +38,38 @@ apt-get install -y \
 # Redémarrage d'Apache pour prise en compte de PHP/MySQL
 systemctl restart apache2
 
-# --- CONFIGURATION NTP (AJOUT) ---
-echo "[3/8] Synchronisation temporelle sur le NTP local"
+# --- CONFIGURATION DU CLIENT NTP  ---
+echo "[2/4] Configuration du client NTP"
 cat > /etc/chrony/chrony.conf <<EOF
+# Connexion vers le serveur NTP en DMZ
 server $NTP_SERVER iburst
-driftfile /var/lib/chrony/drift
+
+# Autorise la correction rapide au démarrage (si décalage > 1s sur les 3 premières mesures)
 makestep 1 3
+
+# Synchroniser l'horloge matérielle (RTC) du noyau
+rtcsync
+
+# Fichier de dérive et logs
+driftfile /var/lib/chrony/drift
+logdir /var/log/chrony
+
 EOF
 systemctl restart chrony
+chronyc makestep
 # ---------------------------------
+# ---------------------------------
+# --- CONFIGURATION SYSLOG (AJOUT) ---
+echo "[3.5/8] Configuration du client Syslog"
+apt-get install -y rsyslog
+cat >> /etc/rsyslog.conf <<EOF
+*.* @192.168.20.15:514
+EOF
 
+# Redémarrer pour appliquer
+systemctl restart rsyslog
+# ------------------------------------
+# ---------------------------------
 id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true
 
 echo "[4/8] Configuration réseau statique sur $IP_IFACE et NAT sur $NAT_IFACE"

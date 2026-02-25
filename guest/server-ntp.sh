@@ -41,7 +41,14 @@ iface ${IFACE} inet static
     gateway ${GATEWAY}
     dns-nameservers ${DNS}
 EOF
-
+ # --- CONFIGURATION SYSLOG (AJOUT) ---
+echo "[*] Configuration du client Syslog"
+apt-get install -y rsyslog
+cat >> /etc/rsyslog.conf <<EOF
+*.* @192.168.20.15:514
+EOF
+systemctl restart rsyslog
+# -------------------------------
 # Redémarrage du service réseau
 systemctl restart networking || (ifdown "${IFACE}" && ifup "${IFACE}")
 sleep 2

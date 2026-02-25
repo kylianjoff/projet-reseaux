@@ -78,6 +78,26 @@ cat > /etc/rsyslog.d/central.conf <<EOF
 & stop
 EOF
 
+# --- CONFIGURATION DU CLIENT NTP  ---
+echo "[2/4] Configuration du client NTP"
+cat > /etc/chrony/chrony.conf <<EOF
+# Connexion vers le serveur NTP en DMZ
+server $NTP_SERVER iburst
+
+# Autorise la correction rapide au démarrage (si décalage > 1s sur les 3 premières mesures)
+makestep 1 3
+
+# Synchroniser l'horloge matérielle (RTC) du noyau
+rtcsync
+
+# Fichier de dérive et logs
+driftfile /var/lib/chrony/drift
+logdir /var/log/chrony
+
+EOF
+systemctl restart chrony
+chronyc makestep
+# ---------------------------------
 # Redémarrer Rsyslog
 systemctl restart rsyslog
 
@@ -92,24 +112,24 @@ ip route
 
 echo "3. Test ping Internet via NAT :"
 if ping -c 2 8.8.8.8 &>/dev/null; then
-    echo "✅ Internet OK"
+    echo " Internet OK"
 else
-    echo "❌ Pas d'accès Internet"
+    echo " Pas d'accès Internet"
 fi
 
 echo "4. Service Rsyslog :"
 if systemctl is-active --quiet rsyslog; then
-    echo "✅ Rsyslog actif"
+    echo " Rsyslog actif"
 else
-    echo "❌ Rsyslog inactif"
+    echo " Rsyslog inactif"
     systemctl status rsyslog --no-pager | head -10
 fi
 
 echo "5. Port UDP 514 :"
 if ss -ulpn | grep -q 514; then
-    echo "✅ Rsyslog écoute sur UDP 514"
+    echo " Rsyslog écoute sur UDP 514"
 else
-    echo "❌ Rsyslog n'écoute pas sur UDP 514"
+    echo " Rsyslog n'écoute pas sur UDP 514"
 fi
 
 echo "== Serveur Syslog centralisé prêt =="
