@@ -18,7 +18,7 @@ echo "== Installation des dépendances =="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y || apt-get update -y --allow-releaseinfo-change
 apt-get install -y sudo curl nano vim traceroute iputils-ping ca-certificates \
-                   net-tools iproute2 ifupdown mariadb-server whiptail chrnoy || true
+                   net-tools iproute2 ifupdown mariadb-server whiptail chrony || true
 
 # Création/utilisateur admin
 id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo "$ADMIN_USER"
