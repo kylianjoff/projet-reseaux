@@ -5,7 +5,7 @@ set -euo pipefail
 ADMIN_USER="administrateur"
 SERVER_IP="192.168.20.15"
 NETMASK="255.255.255.0"
-GATEWAY="192.168.10.254"   # interne, si besoin pour LAN
+GATEWAY="192.168.20.254"   # interne, si besoin pour LAN
 DNS="192.168.10.13"        # serveur DNS interne
 NAT_GW="10.0.3.2"          # passerelle NAT pour Internet via enp0s8
 NTP_SERVER="192.168.10.15"
@@ -56,7 +56,7 @@ ip route del default 2>/dev/null || true
 ip route add default via ${NAT_GW} dev ${NAT_IFACE}
 
 echo "== Installation et configuration Rsyslog =="
-apt-get update && apt-get install -y rsyslog
+apt-get update && apt-get install -y rsyslog chrony
 
 # Activer réception UDP 514
 sed -i 's/#module(load="imudp")/module(load="imudp")/' /etc/rsyslog.conf

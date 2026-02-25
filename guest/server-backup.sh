@@ -6,7 +6,7 @@ export PATH="$PATH:/usr/sbin:/sbin"
 ADMIN_USER="administrateur"
 SERVER_IP="192.168.20.14"
 NETMASK="255.255.255.0"
-GATEWAY="192.168.10.254"
+GATEWAY="192.168.20.254"
 DNS="192.168.10.13"
 NTP_SERVER="192.168.10.15"
 
@@ -21,7 +21,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y || apt-get update -y --allow-releaseinfo-change
 
 echo "[2/6] Installation paquets"
-apt-get install -y sudo rsync openssh-server nano vim net-tools iproute2 ifupdown
+apt-get install -y sudo rsync openssh-server nano vim net-tools iproute2 ifupdown chrony
 
 echo "[3/6] Création utilisateur admin"
 id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$ADMIN_USER"

@@ -6,7 +6,7 @@ export PATH="$PATH:/usr/sbin:/sbin"
 ADMIN_USER="administrateur"
 SERVER_IP="192.168.20.12"
 NETMASK="255.255.255.0"
-GATEWAY="192.168.10.254"
+GATEWAY="192.168.20.254"
 DNS="192.168.10.13"
 IFACE="enp0s3"
 NTP_SERVER="192.168.10.15"
@@ -18,7 +18,7 @@ echo "== Installation des dépendances =="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y || apt-get update -y --allow-releaseinfo-change
 apt-get install -y sudo curl nano vim traceroute iputils-ping ca-certificates \
-                   net-tools iproute2 ifupdown mariadb-server whiptail || true
+                   net-tools iproute2 ifupdown mariadb-server whiptail chrnoy || true
 
 # Création/utilisateur admin
 id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo "$ADMIN_USER"
