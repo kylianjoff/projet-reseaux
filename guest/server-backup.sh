@@ -8,6 +8,7 @@ SERVER_IP="192.168.20.14"
 NETMASK="255.255.255.0"
 GATEWAY="192.168.10.254"
 DNS="192.168.10.13"
+NTP_SERVER="192.168.10.15"
 
 ### ROOT CHECK
 [ "$EUID" -eq 0 ] || { echo "Lancer en root"; exit 1; }

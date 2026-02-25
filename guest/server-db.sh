@@ -9,6 +9,7 @@ NETMASK="255.255.255.0"
 GATEWAY="192.168.10.254"
 DNS="192.168.10.13"
 IFACE="enp0s3"
+NTP_SERVER="192.168.10.15"
 
 # Vérification root
 [ "$EUID" -eq 0 ] || { echo "Ce script doit être lancé en root"; exit 1; }

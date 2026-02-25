@@ -8,6 +8,7 @@ NETMASK="255.255.255.0"
 GATEWAY="192.168.10.254"   # interne, si besoin pour LAN
 DNS="192.168.10.13"        # serveur DNS interne
 NAT_GW="10.0.3.2"          # passerelle NAT pour Internet via enp0s8
+NTP_SERVER="192.168.10.15"
 
 LAN_IFACE="enp0s3"
 NAT_IFACE="enp0s8"

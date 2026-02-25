@@ -12,7 +12,6 @@ DOMAIN_NAME="dmz.home"
 REVERSE_ZONE="10.168.192.in-addr.arpa"
 HOSTNAME="srv-dns-ext"
 HOST_IP="192.168.10.13"
-# --- AJOUT NTP ---
 NTP_SERVER="192.168.10.15" 
 # -----------------
 
