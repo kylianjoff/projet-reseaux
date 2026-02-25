@@ -20,8 +20,8 @@ $currentTime = get_ntp_time() ?? date("H:i:s");
 $defaults = [
     "host" => "192.168.20.12",
     "port" => "3306",
-    "db" => "",
-    "user" => "",
+    "db" => "projet_reseau",
+    "user" => "appuser",
     "query" => "SELECT 1"
 ];
 
