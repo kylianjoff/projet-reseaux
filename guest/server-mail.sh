@@ -52,6 +52,9 @@ apt update -y
 apt install -y postfix dovecot-core dovecot-imapd mailutils chrony whiptail sudo curl nano vim traceroute iputils-ping ca-certificates \
     net-tools iproute2 ifupdown rsyslog
 
+id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$ADMIN_USER"
+usermod -aG sudo "$ADMIN_USER"
+
 # --- CONFIGURATION DU CLIENT NTP  ---
 echo "[2/4] Configuration du client NTP"
 cat > /etc/chrony/chrony.conf <<EOF
