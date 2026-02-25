@@ -46,7 +46,6 @@ systemctl restart chrony
 
 id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true
 
-auto $IFACE
 echo "[4/8] Configuration réseau statique sur $IP_IFACE et NAT sur $NAT_IFACE"
 cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
 
