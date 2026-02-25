@@ -45,9 +45,7 @@ iface $NAT_IFACE inet dhcp
 EOF
 
 # Application immédiate pour l'installation des paquets
-ip addr flush dev $IFACE || true
-ip addr add $SERVER_IP/24 dev $IFACE
-ip route add default via $GATEWAY || true
+# (plus de manipulation directe d'IFACE, car les interfaces sont configurées ci-dessus)
 
 echo "[2/9] Mise à jour et installation des paquets"
 apt update -y
