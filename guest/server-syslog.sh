@@ -16,6 +16,13 @@ NAT_IFACE="enp0s8"
 # Vérification root
 [ "$EUID" -eq 0 ] || { echo "ERREUR : lancez avec sudo"; exit 1; }
 
+
+echo "== Installation des paquets essentiels =="
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y || apt-get update -y --allow-releaseinfo-change
+apt-get install -y sudo curl nano vim traceroute iputils-ping ca-certificates \
+    net-tools iproute2 ifupdown chrony rsyslog
+
 echo "== Configuration interfaces réseau =="
 
 # Désactiver NetworkManager temporairement si présent
