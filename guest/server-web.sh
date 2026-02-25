@@ -32,7 +32,8 @@ apt-get update -y || apt-get update -y --allow-releaseinfo-change
 echo "[2/8] Installation paquets (Apache + Git + Chrony)"
 apt-get install -y \
     sudo curl nano vim traceroute iputils-ping ca-certificates \
-    net-tools iproute2 ifupdown apache2 git rsync chrony
+    net-tools iproute2 ifupdown apache2 git rsync chrony \
+    php libapache2-mod-php
 
 # --- CONFIGURATION NTP (AJOUT) ---
 echo "[3/8] Synchronisation temporelle sur le NTP local"
