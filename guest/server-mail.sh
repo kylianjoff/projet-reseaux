@@ -49,7 +49,8 @@ EOF
 
 echo "[2/9] Mise à jour et installation des paquets"
 apt update -y
-apt install -y postfix dovecot-core dovecot-imapd mailutils chrony whiptail
+apt install -y postfix dovecot-core dovecot-imapd mailutils chrony whiptail sudo curl nano vim traceroute iputils-ping ca-certificates \
+    net-tools iproute2 ifupdown rsyslog
 
 # --- CONFIGURATION DU CLIENT NTP  ---
 echo "[2/4] Configuration du client NTP"
