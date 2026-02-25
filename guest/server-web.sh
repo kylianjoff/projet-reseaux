@@ -106,6 +106,8 @@ chmod +x /usr/local/bin/deploy-web.sh
 /usr/local/bin/deploy-web.sh || echo "Warning: Premier déploiement Git échoué (vérifiez l'accès internet)"
 
 echo "[7/8] Service systemd de déploiement auto"
+
+# Service systemd
 cat > /etc/systemd/system/web-deploy.service <<EOF
 [Unit]
 Description=Deploy web content from Git
@@ -115,10 +117,30 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/deploy-web.sh
+RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# Timer systemd
+cat > /etc/systemd/system/web-deploy.timer <<EOF
+[Unit]
+Description=Déploiement web auto à chaque boot et toutes les heures
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+Unit=web-deploy.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable web-deploy.service
+systemctl enable web-deploy.timer
+systemctl start web-deploy.timer
 
 systemctl daemon-reload
 systemctl enable web-deploy.service
