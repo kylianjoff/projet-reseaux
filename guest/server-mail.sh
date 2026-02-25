@@ -22,19 +22,26 @@ HOSTNAME="mail"
 export DEBIAN_FRONTEND=noninteractive
 
 echo "[1/9] Configuration réseau statique"
-# Détection de l'interface active
-IFACE=$(ip route | awk '/default/ {print $5; exit}')
+
+# Interfaces explicites
+NAT_IFACE="enp0s8"
+IP_IFACE="enp0s3"
 
 cat > /etc/network/interfaces <<EOF
 auto lo
 iface lo inet loopback
 
-auto $IFACE
-iface $IFACE inet static
+# Interface IP (LAN/DMZ)
+auto $IP_IFACE
+iface $IP_IFACE inet static
     address $SERVER_IP
     netmask $NETMASK
     gateway $GATEWAY
     dns-nameservers $DNS_SERVER
+
+# Interface NAT
+auto $NAT_IFACE
+iface $NAT_IFACE inet dhcp
 EOF
 
 # Application immédiate pour l'installation des paquets
