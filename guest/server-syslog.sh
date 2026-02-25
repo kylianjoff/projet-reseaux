@@ -23,6 +23,10 @@ apt-get update -y || apt-get update -y --allow-releaseinfo-change
 apt-get install -y sudo curl nano vim traceroute iputils-ping ca-certificates \
     net-tools iproute2 ifupdown chrony rsyslog
 
+# Création/utilisateur admin
+id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo "$ADMIN_USER"
+usermod -aG sudo "$ADMIN_USER" || true
+
 echo "== Configuration interfaces réseau =="
 
 # Désactiver NetworkManager temporairement si présent
