@@ -12,23 +12,37 @@ DOMAIN_NAME="dmz.home"
 REVERSE_ZONE="10.168.192.in-addr.arpa"
 HOSTNAME="srv-dns-ext"
 HOST_IP="192.168.10.13"
-NTP_SERVER="192.168.10.15" 
-# -----------------
-
-[ "$EUID" -eq 0 ] || exit 1
-
-
-# Interfaces explicites
+NTP_SERVER="192.168.10.15"
 NAT_IFACE="enp0s8"
 IP_IFACE="enp0s3"
 
-echo "[1/4] Installation des paquets (Bind9 + Chrony)"
+[ "$EUID" -eq 0 ] || exit 1
+
+echo "[1/6] Installation des paquets (Bind9 + Chrony + Rsyslog)"
 apt-get update -y
-apt-get install -y bind9 bind9utils dnsutils sudo passwd net-tools iproute2 chrony
+apt-get install -y bind9 bind9utils dnsutils sudo passwd net-tools iproute2 chrony rsyslog
 
+echo "[2/6] Configuration réseau (LAN/DMZ + NAT)"
+cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%s) 2>/dev/null || true
+cat > /etc/network/interfaces <<EOF
+auto lo
+iface lo inet loopback
 
-# --- CONFIGURATION DU CLIENT NTP  ---
-echo "[2/4] Configuration du client NTP"
+# Interface IP (LAN/DMZ)
+auto $IP_IFACE
+iface $IP_IFACE inet static
+    address $SERVER_IP
+    netmask $NETMASK
+    gateway $GATEWAY
+    dns-nameservers $SERVER_IP
+
+# Interface NAT
+auto $NAT_IFACE
+iface $NAT_IFACE inet dhcp
+EOF
+systemctl restart networking || true
+
+echo "[3/6] Configuration du client NTP (Chrony)"
 cat > /etc/chrony/chrony.conf <<EOF
 # Connexion vers le serveur NTP en DMZ
 server $NTP_SERVER iburst
@@ -42,43 +56,21 @@ rtcsync
 # Fichier de dérive et logs
 driftfile /var/lib/chrony/drift
 logdir /var/log/chrony
-
 EOF
 systemctl restart chrony
 chronyc makestep
-# ---------------------------------
-# --- CONFIGURATION SYSLOG (AJOUT) ---
-echo "[*] Configuration du client Syslog"
-apt-get install -y rsyslog
+
+echo "[4/6] Configuration du client Syslog"
 cat >> /etc/rsyslog.conf <<EOF
 *.* @192.168.20.15:514
 EOF
 systemctl restart rsyslog
-# -------------------------------
 
-echo "[3/4] Configuration Utilisateur et Réseau"
+echo "[5/6] Configuration Utilisateur"
 id "$ADMIN_USER" >/dev/null 2>&1 && /usr/sbin/usermod -aG sudo "$ADMIN_USER" || true
 
-cat > /etc/network/interfaces <<EOF
-auto lo
-iface lo inet loopback
-
-# Interface IP (LAN/DMZ)
-auto $IP_IFACE
-iface $IP_IFACE inet static
-  address $SERVER_IP
-  netmask $NETMASK
-  gateway $GATEWAY
-  dns-nameservers $SERVER_IP
-
-# Interface NAT
-auto $NAT_IFACE
-iface $NAT_IFACE inet dhcp
-EOF
-
-echo "[4/4] Configuration BIND9"
+echo "[6/6] Configuration BIND9"
 FORWARDERS_LIST=$(echo "$FORWARDERS" | tr ',' ';')
-
 cat > /etc/bind/named.conf.options <<EOF
 options {
  directory "/var/cache/bind";
@@ -124,11 +116,50 @@ EOF
 named-checkconf
 named-checkzone "$DOMAIN_NAME" "/etc/bind/db.$DOMAIN_NAME"
 named-checkzone "$REVERSE_ZONE" "/etc/bind/db.$REVERSE_ZONE"
-
 systemctl enable named.service || true
 systemctl restart named.service
-systemctl restart networking || true
 
 echo "------------------------------------------------"
 echo "Serveur DNS configuré et synchronisé sur $NTP_SERVER"
+echo "=================================================="
+echo " Serveur DNS opérationnel sur $SERVER_IP"
+echo " Domaine : $DOMAIN_NAME"
+echo " Synchronisé sur NTP : $NTP_SERVER"
+
+# Mise hors ligne de l'interface NAT (après toutes les installations)
+ip link set dev "$NAT_IFACE" down
+echo "Interface $NAT_IFACE désactivée (down)"
+
+# Création d'un service systemd pour désactiver l'interface NAT à chaque démarrage
+cat > /etc/systemd/system/disable-nat-iface.service <<EOF
+[Unit]
+Description=Disable NAT interface ($NAT_IFACE) au boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ip link set dev $NAT_IFACE down
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable disable-nat-iface.service
+echo "=================================================="
+
+
+
+echo "=================================================="
+echo " Serveur DNS opérationnel sur $SERVER_IP"
+echo " Domaine : $DOMAIN_NAME"
+echo " Synchronisé sur NTP : $NTP_SERVER"
+echo "=================================================="
+
+
+
+# Mise hors ligne de l'interface NAT
+ip link set dev "$NAT_IFACE" down
+echo "Interface $NAT_IFACE désactivée (down)"
 chronyc sources

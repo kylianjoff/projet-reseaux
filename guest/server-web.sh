@@ -182,6 +182,26 @@ echo "DNS : ${DNS}"
 echo "NTP : ${NTP_SERVER}"
 echo "-----------------------------------"
 
-# Mise hors ligne de l'interface NAT
+
+# --- FIN DE TOUTES LES CONFIGURATIONS ---
+# Mise hors ligne de l'interface NAT (après toutes les installations)
 ip link set dev "$NAT_IFACE" down
 echo "Interface $NAT_IFACE désactivée (down)"
+
+# Création d'un service systemd pour désactiver l'interface NAT à chaque démarrage
+cat > /etc/systemd/system/disable-nat-iface.service <<EOF
+[Unit]
+Description=Disable NAT interface ($NAT_IFACE) au boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ip link set dev $NAT_IFACE down
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable disable-nat-iface.service
