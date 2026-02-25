@@ -133,3 +133,7 @@ echo "IP : ${SERVER_IP}"
 echo "DNS : ${DNS}"
 echo "NTP : ${NTP_SERVER}"
 echo "-----------------------------------"
+
+# Mise hors ligne de l'interface NAT
+ip link set dev "$NAT_IFACE" down
+echo "Interface $NAT_IFACE désactivée (down)"
