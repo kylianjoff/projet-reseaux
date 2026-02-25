@@ -33,7 +33,10 @@ echo "[2/8] Installation paquets (Apache + Git + Chrony)"
 apt-get install -y \
     sudo curl nano vim traceroute iputils-ping ca-certificates \
     net-tools iproute2 ifupdown apache2 git rsync chrony \
-    php libapache2-mod-php
+    php libapache2-mod-php php-mysql
+
+# Redémarrage d'Apache pour prise en compte de PHP/MySQL
+systemctl restart apache2
 
 # --- CONFIGURATION NTP (AJOUT) ---
 echo "[3/8] Synchronisation temporelle sur le NTP local"
